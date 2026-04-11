@@ -5,6 +5,7 @@ type PageShellProps = {
   title: string;
   description: string;
   action: ReactNode;
+  children?: ReactNode;
 };
 
 export function PageShell({
@@ -12,6 +13,7 @@ export function PageShell({
   title,
   description,
   action,
+  children,
 }: PageShellProps) {
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col justify-center gap-8 px-6 py-16">
@@ -26,6 +28,7 @@ export function PageShell({
           {description}
         </p>
       </div>
+      {children ? <div>{children}</div> : null}
       <div>{action}</div>
     </main>
   );
