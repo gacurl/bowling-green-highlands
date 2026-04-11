@@ -25,8 +25,8 @@ export default async function ReservePage({ searchParams }: ReservePageProps) {
       <div className="space-y-4">
         {hasError ? (
           <p className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-            The request could not be sent. Please try again after email
-            delivery is configured.
+            The request could not be sent. Check your name, email, and
+            preferred date, then try again.
           </p>
         ) : null}
         <form
