@@ -14,7 +14,7 @@ export default async function ReservePage({ searchParams }: ReservePageProps) {
     <PageShell
       eyebrow="Reservation Request"
       title="Send a reservation request for operator review."
-      description="Share the basic request details below. Submitting this form sends the request to the farm operator for review. This does not confirm a booking."
+      description="Share the request details below. Submitting this form sends the request to the farm operator for review. This does not confirm a booking."
       children={
         <div className="space-y-4">
           {hasError ? (
@@ -33,7 +33,7 @@ export default async function ReservePage({ searchParams }: ReservePageProps) {
                 htmlFor="guestName"
                 className="block text-sm font-medium text-zinc-900"
               >
-                Your name
+                Name
               </label>
               <input
                 id="guestName"
@@ -48,7 +48,7 @@ export default async function ReservePage({ searchParams }: ReservePageProps) {
                 htmlFor="guestEmail"
                 className="block text-sm font-medium text-zinc-900"
               >
-                Email address
+                Email
               </label>
               <input
                 id="guestEmail"
@@ -60,18 +60,55 @@ export default async function ReservePage({ searchParams }: ReservePageProps) {
             </div>
             <div className="space-y-2">
               <label
-                htmlFor="requestedDates"
+                htmlFor="phone"
                 className="block text-sm font-medium text-zinc-900"
               >
-                Requested dates
+                Phone
               </label>
               <input
-                id="requestedDates"
-                name="requestedDates"
+                id="phone"
+                name="phone"
                 type="text"
                 required
-                placeholder="Example: May 14 to May 16"
+                className="w-full rounded-2xl border border-zinc-300 px-4 py-3 text-zinc-900 outline-none transition focus:border-zinc-500"
+              />
+            </div>
+            <div className="space-y-2">
+              <label
+                htmlFor="eventType"
+                className="block text-sm font-medium text-zinc-900"
+              >
+                Event type
+              </label>
+              <select
+                id="eventType"
+                name="eventType"
+                required
                 className="w-full rounded-2xl border border-zinc-300 px-4 py-3 text-zinc-900 outline-none transition placeholder:text-zinc-400 focus:border-zinc-500"
+                defaultValue=""
+              >
+                <option value="" disabled>
+                  Select an event type
+                </option>
+                <option value="farm stay">Farm stay</option>
+                <option value="wedding">Wedding</option>
+                <option value="retreat">Retreat</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+            <div className="space-y-2">
+              <label
+                htmlFor="preferredDate"
+                className="block text-sm font-medium text-zinc-900"
+              >
+                Preferred date
+              </label>
+              <input
+                id="preferredDate"
+                name="requestedDates"
+                type="date"
+                required
+                className="w-full rounded-2xl border border-zinc-300 px-4 py-3 text-zinc-900 outline-none transition focus:border-zinc-500"
               />
             </div>
             <div className="space-y-2">
