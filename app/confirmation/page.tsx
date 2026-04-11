@@ -35,7 +35,7 @@ export default async function ConfirmationPage({
       description={
         submitted && hasRequestDetails
           ? "Your request has been forwarded to the farm operator by email. They will review it and follow up directly. This does not confirm a booking."
-          : "Your request was not submitted successfully. Return to the reservation page and try again."
+          : "After you submit a reservation request, this page confirms that the operator will review it and follow up later. A request is not a confirmed booking."
       }
       children={
         submitted && hasRequestDetails ? (
@@ -78,7 +78,7 @@ export default async function ConfirmationPage({
             href="/reserve"
             className="inline-flex items-center justify-center rounded-full bg-zinc-900 px-6 py-3 text-sm font-medium text-white transition-colors hover:bg-zinc-700"
           >
-            Return to reserve
+            Start a reservation request
           </Link>
         )
       }
