@@ -5,8 +5,8 @@ export default function AdminPage() {
   return (
     <PageShell
       eyebrow="Operator Area"
-      title="Admin route placeholder."
-      description="This route is reserved for farm operators. Availability controls and review tools will be added in later issues."
+      title="Future operator area."
+      description="This page is reserved for farm operators. Future work will add reservation request review and other operator-only tools here, but no admin workflow is live yet."
       action={
         <Link
           href="/"
