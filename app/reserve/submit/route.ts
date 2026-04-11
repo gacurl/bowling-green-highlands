@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
 import { sendReservationRequestEmail } from "../../lib/reservation-email";
 
+const BASIC_EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 function readRequiredString(formData: FormData, key: string) {
   const value = formData.get(key);
 
@@ -17,6 +19,10 @@ function readOptionalString(formData: FormData, key: string) {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function isValidEmail(value: string) {
+  return BASIC_EMAIL_PATTERN.test(value);
+}
+
 export async function POST(request: Request) {
   const formData = await request.formData();
   let confirmationUrl: string;
@@ -26,6 +32,10 @@ export async function POST(request: Request) {
     const guestEmail = readRequiredString(formData, "guestEmail");
     const requestedDates = readRequiredString(formData, "requestedDates");
     const requestNotes = readOptionalString(formData, "requestNotes");
+
+    if (!isValidEmail(guestEmail)) {
+      throw new Error("Invalid email address");
+    }
 
     const { contactEmail } = await sendReservationRequestEmail({
       guestEmail,
