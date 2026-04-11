@@ -1,36 +1,103 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Bowling Green Highlands
 
-## Getting Started
+Bowling Green Highlands is a reservation request system for a working farm.
+It gives guests a simple way to send a reservation request and gives the farm
+operator a defined email destination for reviewing those requests.
 
-First, run the development server:
+This project is for:
+- guests who want to request a stay or event date
+- farm operators who need a lightweight way to receive and review requests
+
+This is a request system, not a booking platform. A submitted request is not a
+confirmed booking.
+
+## Current Behavior
+
+Right now the application supports a simple public flow:
+
+`landing -> reserve -> confirmation`
+
+What it does today:
+- guests can open the public landing page
+- guests can submit a reservation request from `/reserve`
+- the app forwards the request server-side to `CONTACT_EMAIL`
+- the confirmation page explains that the request was submitted for review
+- the confirmation page makes clear that no booking has been confirmed
+
+## MVP Scope
+
+Current MVP scope:
+- request-based reservation flow
+- server-side email forwarding for submitted requests
+- basic server-side validation for required request fields
+- placeholder admin route for future operator workflows
+
+What this does not do yet:
+- no confirmed booking flow
+- no payments
+- no availability filtering or calendar controls
+- no database or persistence layer
+- no submission list or admin dashboard
+- no auth system
+
+## Local Setup
+
+1. Install dependencies:
+
+```bash
+npm install
+```
+
+2. Copy the example environment file:
+
+```bash
+cp .env.example .env.local
+```
+
+3. Update `.env.local` with local values.
+
+4. Start the development server:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+5. Open `http://localhost:3000`
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Environment Variables
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+The app currently expects these variables in `.env.local`:
 
-## Learn More
+- `NEXT_PUBLIC_APP_URL`
+  Public base URL for local development and future links.
+  Example: `http://127.0.0.1:3000`
+- `CONTACT_EMAIL`
+  Operator email address that receives reservation requests.
+  Example: `hello@example.com`
+- `SMTP_URL`
+  SMTP connection string used for server-side email forwarding.
+  Example: `smtp://localhost:1025`
+- `EMAIL_FROM`
+  Sender identity used when the app forwards reservation requests.
+  Example: `reservations@example.com`
 
-To learn more about Next.js, take a look at the following resources:
+See [.env.example](/Users/gacurl/IdeaProjects/bowling-green-highlands/.env.example)
+for the current starter values.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Routes
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- `/`
+  Landing page for the public reservation request flow.
+- `/reserve`
+  Single-step reservation request form.
+- `/confirmation`
+  Confirmation page that explains the request was submitted for operator review.
+- `/admin`
+  Placeholder route for future operator-side workflows.
 
-## Deploy on Vercel
+## Development Notes
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- The app uses Next.js App Router with TypeScript, ESLint, and Tailwind CSS.
+- Reservation requests are forwarded by the app on the server using SMTP.
+- If validation fails or email delivery fails, the user is returned to
+  `/reserve?error=1` with a plain recovery message.
