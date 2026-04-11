@@ -37,34 +37,6 @@ export default async function ConfirmationPage({
           ? "Your request has been forwarded to the farm operator by email. They will review it and follow up directly. This does not confirm a booking."
           : "After you submit a reservation request, this page confirms that the operator will review it and follow up later. A request is not a confirmed booking."
       }
-      children={
-        submitted && hasRequestDetails ? (
-          <div className="rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm">
-            <dl className="space-y-4 text-sm text-zinc-600">
-              <div>
-                <dt className="font-medium text-zinc-900">Name</dt>
-                <dd>{guestName}</dd>
-              </div>
-              <div>
-                <dt className="font-medium text-zinc-900">Email</dt>
-                <dd>{guestEmail}</dd>
-              </div>
-              <div>
-                <dt className="font-medium text-zinc-900">Requested dates</dt>
-                <dd>{requestedDates}</dd>
-              </div>
-              <div>
-                <dt className="font-medium text-zinc-900">Notes</dt>
-                <dd>{requestNotes || "None provided"}</dd>
-              </div>
-              <div>
-                <dt className="font-medium text-zinc-900">Operator email</dt>
-                <dd>{contactEmail || "Not configured"}</dd>
-              </div>
-            </dl>
-          </div>
-        ) : null
-      }
       action={
         submitted && hasRequestDetails ? (
           <Link
@@ -82,6 +54,33 @@ export default async function ConfirmationPage({
           </Link>
         )
       }
-    />
+    >
+      {submitted && hasRequestDetails ? (
+        <div className="rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm">
+          <dl className="space-y-4 text-sm text-zinc-600">
+            <div>
+              <dt className="font-medium text-zinc-900">Name</dt>
+              <dd>{guestName}</dd>
+            </div>
+            <div>
+              <dt className="font-medium text-zinc-900">Email</dt>
+              <dd>{guestEmail}</dd>
+            </div>
+            <div>
+              <dt className="font-medium text-zinc-900">Requested dates</dt>
+              <dd>{requestedDates}</dd>
+            </div>
+            <div>
+              <dt className="font-medium text-zinc-900">Notes</dt>
+              <dd>{requestNotes || "None provided"}</dd>
+            </div>
+            <div>
+              <dt className="font-medium text-zinc-900">Operator email</dt>
+              <dd>{contactEmail || "Not configured"}</dd>
+            </div>
+          </dl>
+        </div>
+      ) : null}
+    </PageShell>
   );
 }
