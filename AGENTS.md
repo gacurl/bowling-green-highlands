@@ -128,6 +128,8 @@ Target-state rule:
 - slot duration may be configurable globally for MVP
 - slots must not overlap
 - slots must not exceed the defined availability window
+- malformed slot engine input must fail safely
+- partial trailing time must not create a slot
 - no recurrence rules
 - no drag/drop scheduling
 - no complex calendar interactions
