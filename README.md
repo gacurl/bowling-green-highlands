@@ -52,6 +52,68 @@ The target system direction is slot-based:
 This direction is not implemented yet. Until it is implemented, the live system
 remains request-based and email-driven.
 
+## Target Slot Model
+
+This section defines the authoritative target slot-based model for MVP. It is a
+specification for future implementation, not a description of current behavior.
+
+### Slot Structure
+
+Each slot has:
+- `date`: `YYYY-MM-DD`
+- `startTime`: `HH:mm`
+- `endTime`: `HH:mm`
+- `status`: `available | reserved | unavailable`
+
+### Slot Generation
+
+For a given date:
+- the operator defines a start time and end time
+- the system generates slots automatically inside that availability window
+- default slot duration is 30 minutes
+- slot duration is configurable globally for MVP
+- slots must not overlap
+- slots must not extend past the operator-defined end time
+
+### Reservation Rules
+
+Target reservation behavior:
+- one reservation per slot
+- a reserved slot is no longer selectable
+- slots cannot be double-booked
+- confirmation should reflect the actual reservation state
+
+Current implementation note:
+- the live app does not implement slot reservations yet
+- the live app is still request-based and email-driven
+
+### Operator Workflow
+
+Target operator workflow:
+- operator selects a date
+- operator defines start and end availability
+- system generates slots automatically
+- operator may mark specific slots unavailable if needed
+- workflow should stay simple and low-click
+
+### Public User Workflow
+
+Target public workflow:
+- user visits the reserve page
+- user sees available slots
+- user selects one slot
+- user submits the reservation
+- confirmation reflects the actual reservation state
+
+### Non-Goals For MVP
+
+The target slot model does not include:
+- recurring rules
+- drag/drop calendar behavior
+- complex scheduling tools
+- payment workflow details
+- advanced booking engine behavior
+
 ## Local Setup
 
 1. Install dependencies:
