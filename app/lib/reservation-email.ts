@@ -34,7 +34,7 @@ export async function sendReservationRequestEmail({
     "",
     `Name: ${guestName}`,
     `Email: ${guestEmail}`,
-    `Requested slot: ${requestedDates}`,
+    `Requested example slot: ${requestedDates}`,
     `Notes: ${requestNotes || "None provided"}`,
     "",
     "This is a request only. Please review and reply directly to the guest.",

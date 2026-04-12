@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { isReserveExampleSlotValue } from "../../../lib/reserve-example-availability";
 import { sendReservationRequestEmail } from "../../lib/reservation-email";
 
 const BASIC_EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -35,6 +36,10 @@ export async function POST(request: Request) {
 
     if (!isValidEmail(guestEmail)) {
       throw new Error("Invalid email address");
+    }
+
+    if (!isReserveExampleSlotValue(requestedDates)) {
+      throw new Error("Invalid requested slot");
     }
 
     const { contactEmail } = await sendReservationRequestEmail({

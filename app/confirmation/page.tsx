@@ -67,7 +67,9 @@ export default async function ConfirmationPage({
               <dd>{guestEmail}</dd>
             </div>
             <div>
-              <dt className="font-medium text-zinc-900">Requested slot</dt>
+              <dt className="font-medium text-zinc-900">
+                Requested example slot
+              </dt>
               <dd>{requestedDates}</dd>
             </div>
             <div>

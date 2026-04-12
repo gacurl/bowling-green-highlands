@@ -1,19 +1,10 @@
-import { getAvailableSlots } from "../../lib/availability";
-import type { Slot } from "../../lib/slots";
+import {
+  getReserveExampleSlots,
+  RESERVE_EXAMPLE_DATE_LABEL,
+  RESERVE_EXAMPLE_END_TIME,
+  RESERVE_EXAMPLE_START_TIME,
+} from "../../lib/reserve-example-availability";
 import { PageShell } from "../components/page-shell";
-
-const AVAILABILITY_DATE = "2026-06-14";
-const AVAILABILITY_LABEL = "Sunday, June 14, 2026";
-const AVAILABILITY_START_TIME = "09:00";
-const AVAILABILITY_END_TIME = "11:00";
-const EXISTING_RESERVATIONS: Slot[] = [
-  {
-    date: AVAILABILITY_DATE,
-    startTime: "09:30",
-    endTime: "10:00",
-    status: "available",
-  },
-];
 
 type ReservePageProps = {
   searchParams: Promise<{
@@ -24,12 +15,7 @@ type ReservePageProps = {
 export default async function ReservePage({ searchParams }: ReservePageProps) {
   const params = await searchParams;
   const hasError = params.error === "1";
-  const availableSlots = getAvailableSlots(
-    AVAILABILITY_DATE,
-    AVAILABILITY_START_TIME,
-    AVAILABILITY_END_TIME,
-    EXISTING_RESERVATIONS,
-  );
+  const availableSlots = getReserveExampleSlots();
   const hasSelectableSlots = availableSlots.some(
     (slot) => slot.status === "available",
   );
@@ -67,8 +53,8 @@ export default async function ReservePage({ searchParams }: ReservePageProps) {
                 Choose a time
               </legend>
               <p className="text-sm text-zinc-600">
-                {AVAILABILITY_LABEL} from {AVAILABILITY_START_TIME} to{" "}
-                {AVAILABILITY_END_TIME}
+                {RESERVE_EXAMPLE_DATE_LABEL} from {RESERVE_EXAMPLE_START_TIME}{" "}
+                to {RESERVE_EXAMPLE_END_TIME}
               </p>
             </div>
             <div className="space-y-3">
