@@ -3,6 +3,12 @@
 import { useState } from "react";
 
 const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const BLOCKED_DATES = new Set([
+  "2026-04-10",
+  "2026-04-18",
+  "2026-05-03",
+  "2026-05-21",
+]);
 
 type MonthCalendarProps = {
   todayIso: string;
@@ -99,6 +105,16 @@ export function MonthCalendar({ todayIso }: MonthCalendarProps) {
           Next
         </button>
       </div>
+      <div className="mt-4 flex items-center gap-4 text-sm text-zinc-600">
+        <span className="inline-flex items-center gap-2">
+          <span className="h-3 w-3 rounded-full border border-emerald-300 bg-emerald-100" />
+          Open
+        </span>
+        <span className="inline-flex items-center gap-2">
+          <span className="h-3 w-3 rounded-full border border-zinc-400 bg-zinc-300" />
+          Blocked
+        </span>
+      </div>
       <div className="mt-6 grid grid-cols-7 gap-2" aria-label="Month calendar">
         {WEEKDAY_LABELS.map((weekday) => (
           <div
@@ -110,6 +126,8 @@ export function MonthCalendar({ todayIso }: MonthCalendarProps) {
         ))}
         {calendarCells.map((cell, index) => {
           const isToday = cell.isoDate === todayIso;
+          const isBlocked = cell.isoDate ? BLOCKED_DATES.has(cell.isoDate) : false;
+          const stateLabel = isBlocked ? "Blocked" : "Open";
 
           return (
             <div
@@ -118,13 +136,31 @@ export function MonthCalendar({ todayIso }: MonthCalendarProps) {
                 cell.dayNumber === null
                   ? "border-transparent bg-transparent"
                   : isToday
-                    ? "border-zinc-900 bg-zinc-900 text-white"
-                    : "border-zinc-200 bg-zinc-50 text-zinc-900"
+                    ? isBlocked
+                      ? "border-zinc-900 bg-zinc-900 text-white"
+                      : "border-emerald-700 bg-emerald-600 text-white"
+                    : isBlocked
+                      ? "border-zinc-400 bg-zinc-300 text-zinc-900"
+                      : "border-emerald-300 bg-emerald-100 text-zinc-900"
               }`}
               aria-current={isToday ? "date" : undefined}
+              aria-label={
+                cell.dayNumber !== null
+                  ? `${cell.isoDate} ${stateLabel}${isToday ? ", today" : ""}`
+                  : undefined
+              }
             >
               {cell.dayNumber !== null ? (
-                <span className="font-medium">{cell.dayNumber}</span>
+                <div className="flex h-full flex-col justify-between">
+                  <span className="font-medium">{cell.dayNumber}</span>
+                  <span
+                    className={`text-xs font-medium ${
+                      isToday ? "text-current/80" : "text-current/70"
+                    }`}
+                  >
+                    {stateLabel}
+                  </span>
+                </div>
               ) : null}
             </div>
           );
