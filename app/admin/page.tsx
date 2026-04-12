@@ -1,12 +1,20 @@
 import Link from "next/link";
+import { MonthCalendar } from "./month-calendar";
 import { PageShell } from "../components/page-shell";
 
 export default function AdminPage() {
+  const today = new Date();
+  const todayIso = [
+    today.getFullYear(),
+    String(today.getMonth() + 1).padStart(2, "0"),
+    String(today.getDate()).padStart(2, "0"),
+  ].join("-");
+
   return (
     <PageShell
       eyebrow="Operator Area"
-      title="Future operator area."
-      description="This page is reserved for farm operators. Future work will add reservation request review and other operator-only tools here, but no admin workflow is live yet."
+      title="View the month at a glance."
+      description="Use the calendar below to move through the month and review days. Availability controls are not part of this step yet."
       action={
         <Link
           href="/"
@@ -15,6 +23,8 @@ export default function AdminPage() {
           Return to landing
         </Link>
       }
-    />
+    >
+      <MonthCalendar todayIso={todayIso} />
+    </PageShell>
   );
 }
