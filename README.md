@@ -11,7 +11,7 @@ This project is for:
 This is a request system, not a booking platform. A submitted request is not a
 confirmed booking.
 
-## Current Behavior
+## Current State
 
 Right now the application supports a simple public flow:
 
@@ -39,6 +39,18 @@ What this does not do yet:
 - no database or persistence layer
 - no submission list or admin dashboard
 - no auth system
+
+## Planned Direction
+
+The target system direction is slot-based:
+- operators define availability windows
+- the system auto-generates time slots
+- slot duration defaults to 30 minutes unless ticketed otherwise
+- users select one available slot
+- reserved slots cannot be double-booked
+
+This direction is not implemented yet. Until it is implemented, the live system
+remains request-based and email-driven.
 
 ## Local Setup
 

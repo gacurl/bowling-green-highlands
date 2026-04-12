@@ -4,38 +4,61 @@ Purpose: enforce operating rules for Bowling Green Highlands.
 Prevent drift. Preserve simplicity. Keep work aligned to the real product.
 
 If instructions conflict:
-- direct user instruction > AGENTS.md > other files
+- direct user instruction
+- AGENTS.md
+- repo state
+- docs/codex/* continuity files
+
+docs/codex/* files are context-only unless the user explicitly promotes them.
 
 ---
 
 ## Product Identity
 
-Bowling Green Highlands is a reservation + availability system for a working farm.
+Bowling Green Highlands is an availability and reservation system for a working farm.
 
 It is NOT:
 - a generic website
-- a booking platform
-- an auto-confirm system
+- a full scheduling platform
+- a complex booking engine
+- a feature playground
 
-MVP:
-- operators block/unblock dates
-- users request available dates only
-- reservations are request-based
-- blocked dates cannot be selected
-- no payments
+## Current Behavior
+
+The current system is request-based:
+- guests submit a reservation request
+- the app forwards the request by email to the operator
+- no slot selection exists yet
+- no real booking is confirmed by the system
+
+## Target Direction
+
+The target MVP is slot-based:
+- operators define availability windows
+- system generates time slots automatically
+- users select and reserve a time slot
+- slots cannot be double-booked
+- confirmation reflects the real reservation state
 
 ---
 
 ## Core Model
 
+Current model:
+- user submits a requested date for operator review
+- operator follows up outside the app
+
+Target model:
 Operators:
-- control availability via calendar
+- choose a date
+- define available time window
+- system generates slots using a fixed duration
+- optionally close specific slots
 
 Users:
-- see availability
-- select available dates only
-- submit request
-- receive confirmation that the request was submitted
+- see available slots
+- select one slot
+- complete reservation
 
 If this model breaks, the feature is invalid.
 
@@ -78,9 +101,9 @@ Priority:
 ## 30-Second Rule
 
 A normal user must be able to:
-- understand availability
-- block a date
-- complete the core action
+- understand the current request flow
+- see what happens next
+- complete a reservation
 
 within 30 seconds.
 
@@ -88,15 +111,57 @@ Fail = not ready.
 
 ---
 
-## Calendar Constraints
+## Scheduling Constraints
 
-- day-level only
-- no time slots
-- no drag/drop
-- no recurrence
-- no complex controls
+Current-state rule:
+- treat the product as request-based until slot behavior is actually implemented
 
-Availability must be instantly clear.
+Target-state rule:
+- slots are auto-generated
+- fixed slot duration (default 30 minutes unless ticketed otherwise)
+- no recurrence rules
+- no drag/drop scheduling
+- no complex calendar interactions
+- no explanation-heavy controls
+
+Keep scheduling simple and fast.
+
+---
+
+## Engineering Posture
+
+Build systems, not pages.
+
+Prefer:
+- simple frontend that drives action
+- minimal backend
+- MVP-first scope
+- low-maintenance implementation
+- real behavior over placeholder behavior
+
+Avoid:
+- premature infrastructure
+- speculative abstractions
+- hidden flows
+- fake booking behavior
+- scope creep
+
+---
+
+## Security and Delivery Baseline
+
+Security and delivery are part of the baseline, not stretch goals.
+
+Required posture:
+- CI must stay passing
+- build must stay passing
+- security workflows remain enabled
+- no dependency or config change without checking blast radius
+
+Do not introduce:
+- unsafe secrets handling
+- undocumented env changes
+- silent workflow breakage
 
 ---
 
@@ -116,29 +181,43 @@ Commit:
 
 ---
 
-## Scope Discipline
+## Codex Execution Rule
 
-Prefer:
-- simplicity over completeness
-- usability over elegance
-- low maintenance over feature depth
+Before implementation:
+- the correct issue branch must already be checked out
+- Codex must work only on that branch
+- prompts should name the issue branch when relevant
 
-Never introduce without an issue:
-- payments
-- auth expansion
-- advanced scheduling
-- speculative infrastructure
-- multi-step flows
+Codex must NOT:
+- create or switch branches
+- modify unrelated files
+- expand scope beyond the issue
+- treat docs/codex/* as more authoritative than AGENTS.md or repo state
+
+---
+
+## Source-of-Truth Hierarchy
+
+When deciding what to trust:
+
+1. direct user instructions
+2. AGENTS.md
+3. actual repo code and config
+4. committed project docs
+5. local continuity docs in `docs/codex/*`
+
+If continuity docs conflict with repo truth, repo truth wins unless the user says otherwise.
 
 ---
 
 ## Local Memory
 
-Local-only files may be untracked:
+Local-only files:
 - `docs/codex/PROJECT_MEMORY.md`
 - `docs/codex/CURRENT_STATE.md`
 
-Use them for continuity, not as source of truth over committed repo files.
+Use for continuity only.
+Do not treat them as authoritative over committed repo files.
 
 ---
 
@@ -149,15 +228,17 @@ Use them for continuity, not as source of truth over committed repo files.
 - flow remains intact
 - no regression introduced
 - smoke test passes
+- CI risk is understood
+- scope matches the issue
 
 ---
 
 ## Stop Conditions
 
 STOP if a change would:
-- break the availability-first model
-- introduce auto-confirmation
-- add payments
-- add time-slot scheduling
-- add extra steps to the public flow
-- exceed issue scope
+- introduce complex scheduling behavior beyond the issue
+- break the 3-step flow
+- add unnecessary user friction
+- weaken system truth
+- change persistence/auth/payment behavior without an issue
+- create drift between docs and actual product behavior
