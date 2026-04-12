@@ -34,22 +34,49 @@ const TIME_OPTIONS = [
   "19:30",
   "20:00",
 ];
-const BLOCKED_DATES = new Set([
-  "2026-04-10",
-  "2026-04-18",
-  "2026-05-03",
-  "2026-05-21",
-]);
-
 type MonthCalendarProps = {
   todayIso: string;
 };
 
 type AvailabilityMode = "unavailable" | "window";
+type DayAvailability = {
+  mode: AvailabilityMode;
+  startTime: string;
+  endTime: string;
+};
 
 type CalendarCell = {
   dayNumber: number | null;
   isoDate: string | null;
+};
+
+const DEFAULT_DAY_AVAILABILITY: DayAvailability = {
+  mode: "window",
+  startTime: "09:00",
+  endTime: "17:00",
+};
+
+const INITIAL_DAY_AVAILABILITY: Record<string, DayAvailability> = {
+  "2026-04-10": {
+    mode: "unavailable",
+    startTime: "09:00",
+    endTime: "17:00",
+  },
+  "2026-04-18": {
+    mode: "unavailable",
+    startTime: "09:00",
+    endTime: "17:00",
+  },
+  "2026-05-03": {
+    mode: "window",
+    startTime: "10:00",
+    endTime: "15:00",
+  },
+  "2026-05-21": {
+    mode: "unavailable",
+    startTime: "09:00",
+    endTime: "17:00",
+  },
 };
 
 function startOfMonth(date: Date) {
@@ -122,12 +149,30 @@ export function MonthCalendar({ todayIso }: MonthCalendarProps) {
   const [displayMonth, setDisplayMonth] = useState(() =>
     startOfMonth(new Date(`${todayIso}T00:00:00`)),
   );
+  const [dayAvailability, setDayAvailability] = useState(INITIAL_DAY_AVAILABILITY);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
-  const [availabilityMode, setAvailabilityMode] =
-    useState<AvailabilityMode>("window");
-  const [startTime, setStartTime] = useState("09:00");
-  const [endTime, setEndTime] = useState("17:00");
   const calendarCells = buildCalendarCells(displayMonth);
+  const selectedDayAvailability = selectedDate
+    ? dayAvailability[selectedDate] ?? DEFAULT_DAY_AVAILABILITY
+    : null;
+
+  function updateSelectedDayAvailability(next: Partial<DayAvailability>) {
+    if (!selectedDate) {
+      return;
+    }
+
+    setDayAvailability((current) => {
+      const currentValue = current[selectedDate] ?? DEFAULT_DAY_AVAILABILITY;
+
+      return {
+        ...current,
+        [selectedDate]: {
+          ...currentValue,
+          ...next,
+        },
+      };
+    });
+  }
 
   return (
     <section className="rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm">
@@ -173,7 +218,10 @@ export function MonthCalendar({ todayIso }: MonthCalendarProps) {
         ))}
         {calendarCells.map((cell, index) => {
           const isToday = cell.isoDate === todayIso;
-          const isBlocked = cell.isoDate ? BLOCKED_DATES.has(cell.isoDate) : false;
+          const dayState = cell.isoDate
+            ? dayAvailability[cell.isoDate] ?? DEFAULT_DAY_AVAILABILITY
+            : null;
+          const isBlocked = dayState?.mode === "unavailable";
           const isSelected = cell.isoDate !== null && cell.isoDate === selectedDate;
           const stateLabel = isBlocked ? "Blocked" : "Open";
 
@@ -245,8 +293,10 @@ export function MonthCalendar({ todayIso }: MonthCalendarProps) {
                 type="radio"
                 name="availabilityMode"
                 value="unavailable"
-                checked={availabilityMode === "unavailable"}
-                onChange={() => setAvailabilityMode("unavailable")}
+                checked={selectedDayAvailability?.mode === "unavailable"}
+                onChange={() =>
+                  updateSelectedDayAvailability({ mode: "unavailable" })
+                }
                 className="h-4 w-4 border-zinc-300 text-zinc-900 focus:ring-zinc-500"
               />
               <span className="font-medium">Unavailable (full day)</span>
@@ -256,8 +306,8 @@ export function MonthCalendar({ todayIso }: MonthCalendarProps) {
                 type="radio"
                 name="availabilityMode"
                 value="window"
-                checked={availabilityMode === "window"}
-                onChange={() => setAvailabilityMode("window")}
+                checked={selectedDayAvailability?.mode === "window"}
+                onChange={() => updateSelectedDayAvailability({ mode: "window" })}
                 className="h-4 w-4 border-zinc-300 text-zinc-900 focus:ring-zinc-500"
               />
               <span className="font-medium">Available with time window</span>
@@ -272,9 +322,13 @@ export function MonthCalendar({ todayIso }: MonthCalendarProps) {
                 </label>
                 <select
                   id="startTime"
-                  value={startTime}
-                  onChange={(event) => setStartTime(event.target.value)}
-                  disabled={availabilityMode !== "window"}
+                  value={selectedDayAvailability?.startTime ?? "09:00"}
+                  onChange={(event) =>
+                    updateSelectedDayAvailability({
+                      startTime: event.target.value,
+                    })
+                  }
+                  disabled={selectedDayAvailability?.mode !== "window"}
                   className="w-full rounded-2xl border border-zinc-300 bg-white px-4 py-3 text-zinc-900 outline-none transition focus:border-zinc-500 disabled:cursor-not-allowed disabled:bg-zinc-100 disabled:text-zinc-500"
                 >
                   {TIME_OPTIONS.map((time) => (
@@ -293,9 +347,13 @@ export function MonthCalendar({ todayIso }: MonthCalendarProps) {
                 </label>
                 <select
                   id="endTime"
-                  value={endTime}
-                  onChange={(event) => setEndTime(event.target.value)}
-                  disabled={availabilityMode !== "window"}
+                  value={selectedDayAvailability?.endTime ?? "17:00"}
+                  onChange={(event) =>
+                    updateSelectedDayAvailability({
+                      endTime: event.target.value,
+                    })
+                  }
+                  disabled={selectedDayAvailability?.mode !== "window"}
                   className="w-full rounded-2xl border border-zinc-300 bg-white px-4 py-3 text-zinc-900 outline-none transition focus:border-zinc-500 disabled:cursor-not-allowed disabled:bg-zinc-100 disabled:text-zinc-500"
                 >
                   {TIME_OPTIONS.map((time) => (
