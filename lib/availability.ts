@@ -1,3 +1,6 @@
+import { applyReservationAvailability } from "./slot-availability.ts";
+import { generateSlots, type Slot } from "./slots.ts";
+
 const BLOCKED_DATES: string[] = [
   "2026-06-12",
   "2026-06-13",
@@ -22,4 +25,15 @@ export function isDateBlocked(date: string): boolean {
   }
 
   return BLOCKED_DATES.includes(normalized);
+}
+
+export function getAvailableSlots(
+  date: string,
+  startTime: string,
+  endTime: string,
+  existingReservations: Slot[],
+): Slot[] {
+  const generatedSlots = generateSlots(date, startTime, endTime);
+
+  return applyReservationAvailability(generatedSlots, existingReservations);
 }

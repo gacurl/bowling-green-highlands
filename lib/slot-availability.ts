@@ -1,5 +1,5 @@
-import { isSlotAvailable } from "./reservations";
-import type { Slot } from "./slots";
+import { isSlotAvailable } from "./reservations.ts";
+import type { Slot } from "./slots.ts";
 
 export function applyReservationAvailability(
   slots: Slot[],
