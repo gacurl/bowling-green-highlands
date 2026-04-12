@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { getAvailableSlots } from "./availability.ts";
+import { getAvailableSlots } from "./availability";
 import type { Slot } from "./slots";
 
 test("returns all generated slots as available when there are no reservations", () => {

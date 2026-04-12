@@ -1,4 +1,4 @@
-import type { Slot } from "./slots.ts";
+import type { Slot } from "./slots";
 
 function isSameSlot(left: Slot, right: Slot): boolean {
   return (
