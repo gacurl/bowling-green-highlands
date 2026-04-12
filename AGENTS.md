@@ -232,6 +232,21 @@ Do not treat them as authoritative over committed repo files.
 
 ---
 
+## TypeScript Import Rule (Critical)
+
+- Do NOT include `.ts` extensions in import paths
+- Always use extensionless imports
+
+Correct:
+import { example } from "./example"
+
+Incorrect:
+import { example } from "./example.ts"
+
+Violation will break CI builds.
+
+---
+
 ## Definition of Done
 
 - behavior works
