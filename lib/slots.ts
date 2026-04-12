@@ -1,10 +1,12 @@
 export const SLOT_DURATION_MINUTES = 30;
 
+export type SlotStatus = "available" | "unavailable";
+
 export type Slot = {
   date: string;
   startTime: string;
   endTime: string;
-  status: "available";
+  status: SlotStatus;
 };
 
 const TIME_PATTERN = /^(\d{2}):(\d{2})$/;
