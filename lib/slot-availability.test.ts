@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { applyReservationAvailability } from "./slot-availability.ts";
+import { applyReservationAvailability } from "./slot-availability";
 import type { Slot } from "./slots";
 
 const slots: Slot[] = [

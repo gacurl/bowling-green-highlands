@@ -1,5 +1,5 @@
-import { applyReservationAvailability } from "./slot-availability.ts";
-import { generateSlots, type Slot } from "./slots.ts";
+import { applyReservationAvailability } from "./slot-availability";
+import { generateSlots, type Slot } from "./slots";
 
 const BLOCKED_DATES: string[] = [
   "2026-06-12",

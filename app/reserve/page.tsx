@@ -1,4 +1,19 @@
+import { getAvailableSlots } from "../../lib/availability";
+import type { Slot } from "../../lib/slots";
 import { PageShell } from "../components/page-shell";
+
+const AVAILABILITY_DATE = "2026-06-14";
+const AVAILABILITY_LABEL = "Sunday, June 14, 2026";
+const AVAILABILITY_START_TIME = "09:00";
+const AVAILABILITY_END_TIME = "11:00";
+const EXISTING_RESERVATIONS: Slot[] = [
+  {
+    date: AVAILABILITY_DATE,
+    startTime: "09:30",
+    endTime: "10:00",
+    status: "available",
+  },
+];
 
 type ReservePageProps = {
   searchParams: Promise<{
@@ -9,12 +24,18 @@ type ReservePageProps = {
 export default async function ReservePage({ searchParams }: ReservePageProps) {
   const params = await searchParams;
   const hasError = params.error === "1";
+  const availableSlots = getAvailableSlots(
+    AVAILABILITY_DATE,
+    AVAILABILITY_START_TIME,
+    AVAILABILITY_END_TIME,
+    EXISTING_RESERVATIONS,
+  );
 
   return (
     <PageShell
       eyebrow="Reservation Request"
-      title="Send a reservation request for operator review."
-      description="Share the request details below. Submitting this form sends the request to the farm operator for review. This does not confirm a booking."
+      title="Check availability, then send a reservation request."
+      description="Current availability is shown below. Submit the form to send your request to the farm operator for review. This does not confirm a booking."
       action={
         <p className="text-sm text-zinc-500">
           The operator reviews requests after the email is sent. No dates are
@@ -29,6 +50,46 @@ export default async function ReservePage({ searchParams }: ReservePageProps) {
             preferred date, then try again.
           </p>
         ) : null}
+        <section className="rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm">
+          <div className="space-y-1">
+            <p className="text-sm font-medium text-zinc-500">
+              Example availability
+            </p>
+            <h2 className="text-lg font-semibold text-zinc-900">
+              Current availability
+            </h2>
+            <p className="text-sm text-zinc-600">
+              {AVAILABILITY_LABEL} from {AVAILABILITY_START_TIME} to{" "}
+              {AVAILABILITY_END_TIME}
+            </p>
+            <p className="text-sm text-zinc-500">
+              Available times are shown for reference. Submit your request
+              below for operator review.
+            </p>
+          </div>
+          <ul className="mt-4 space-y-3">
+            {availableSlots.map((slot) => {
+              const isUnavailable = slot.status === "unavailable";
+
+              return (
+                <li
+                  key={`${slot.date}-${slot.startTime}-${slot.endTime}`}
+                  className={`flex items-center justify-between rounded-2xl border px-4 py-3 text-sm ${
+                    isUnavailable
+                      ? "border-zinc-200 bg-zinc-100 text-zinc-500"
+                      : "border-green-200 bg-green-50 text-zinc-900"
+                  }`}
+                  aria-disabled={isUnavailable}
+                >
+                  <span className="font-medium">
+                    {slot.startTime} to {slot.endTime}
+                  </span>
+                  <span>{isUnavailable ? "Unavailable" : "Available"}</span>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
         <form
           action="/reserve/submit"
           method="post"
@@ -114,6 +175,7 @@ export default async function ReservePage({ searchParams }: ReservePageProps) {
               name="requestedDates"
               type="date"
               required
+              defaultValue={AVAILABILITY_DATE}
               className="w-full rounded-2xl border border-zinc-300 px-4 py-3 text-zinc-900 outline-none transition focus:border-zinc-500"
             />
           </div>
