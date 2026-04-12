@@ -40,6 +40,12 @@ The target MVP is slot-based:
 - slots cannot be double-booked
 - confirmation reflects the real reservation state
 
+Target slot structure:
+- `date`: `YYYY-MM-DD`
+- `startTime`: `HH:mm`
+- `endTime`: `HH:mm`
+- `status`: `available | reserved | unavailable`
+
 ---
 
 ## Core Model
@@ -119,6 +125,9 @@ Current-state rule:
 Target-state rule:
 - slots are auto-generated
 - fixed slot duration (default 30 minutes unless ticketed otherwise)
+- slot duration may be configurable globally for MVP
+- slots must not overlap
+- slots must not exceed the defined availability window
 - no recurrence rules
 - no drag/drop scheduling
 - no complex calendar interactions
