@@ -1,7 +1,7 @@
-const BLOCKED_DATES = [
+const BLOCKED_DATES: string[] = [
   "2026-06-12",
   "2026-06-13",
-] as const;
+];
 
 function normalizeDate(input: string): string | null {
   if (!input) {
