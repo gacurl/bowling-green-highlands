@@ -13,6 +13,24 @@ docs/codex/* files are context-only unless the user explicitly promotes them.
 
 ---
 
+## Required Architectural Reference
+
+Before implementing features, review:
+
+- docs/SYSTEM_TRUTHS.md
+
+System truths override convenience, feature expansion, or speculative architecture.
+
+All implementation decisions must preserve:
+
+- request-based reservation truth
+- operator-controlled availability
+- low cognitive load
+- MVP-first simplicity
+- one primary action per screen
+
+---
+
 ## Product Identity
 
 Bowling Green Highlands is an availability and reservation system for a working farm.
