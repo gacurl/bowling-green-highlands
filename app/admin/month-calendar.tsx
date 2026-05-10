@@ -1,7 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import type { OperatorAvailability } from "../../lib/operator-availability";
+import type {
+  OperatorAvailability,
+  OperatorDayAvailability,
+  OperatorAvailabilityMode,
+} from "../../lib/operator-availability";
 
 const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -10,18 +14,13 @@ type MonthCalendarProps = {
   todayIso: string;
 };
 
-type AvailabilityMode = "available" | "unavailable";
-type DayAvailability = {
-  mode: AvailabilityMode;
-};
-
 type CalendarCell = {
   dayNumber: number | null;
   isoDate: string | null;
 };
 
-const DEFAULT_DAY_AVAILABILITY: DayAvailability = {
-  mode: "available",
+const DEFAULT_DAY_AVAILABILITY: OperatorDayAvailability = {
+  mode: "unavailable",
 };
 
 function startOfMonth(date: Date) {
@@ -98,7 +97,7 @@ export function MonthCalendar({
     startOfMonth(new Date(`${todayIso}T00:00:00`)),
   );
   const [dayAvailability, setDayAvailability] =
-    useState<Record<string, DayAvailability>>(initialAvailability);
+    useState<Record<string, OperatorDayAvailability>>(initialAvailability);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [saveError, setSaveError] = useState(false);
   const calendarCells = buildCalendarCells(displayMonth);
@@ -106,7 +105,7 @@ export function MonthCalendar({
     ? dayAvailability[selectedDate] ?? DEFAULT_DAY_AVAILABILITY
     : null;
 
-  function updateSelectedDayAvailability(mode: AvailabilityMode) {
+  function updateSelectedDayAvailability(mode: OperatorAvailabilityMode) {
     if (!selectedDate) {
       return;
     }
@@ -131,11 +130,7 @@ export function MonthCalendar({
         setDayAvailability((current) => {
           const nextAvailability = { ...current };
 
-          if (mode === "unavailable") {
-            nextAvailability[dateToUpdate] = { mode: "unavailable" };
-          } else {
-            delete nextAvailability[dateToUpdate];
-          }
+          nextAvailability[dateToUpdate] = { mode };
 
           return nextAvailability;
         });
@@ -169,7 +164,7 @@ export function MonthCalendar({
       <div className="mt-4 flex items-center gap-4 text-sm text-zinc-600">
         <span className="inline-flex items-center gap-2">
           <span className="h-3 w-3 rounded-full border border-emerald-300 bg-emerald-100" />
-          Open
+          Available
         </span>
         <span className="inline-flex items-center gap-2">
           <span className="h-3 w-3 rounded-full border border-zinc-400 bg-zinc-300" />
@@ -193,7 +188,7 @@ export function MonthCalendar({
           const isBlocked = dayState?.mode === "unavailable";
           const isSelected =
             cell.isoDate !== null && cell.isoDate === selectedDate;
-          const stateLabel = isBlocked ? "Blocked" : "Open";
+          const stateLabel = isBlocked ? "Blocked" : "Available";
 
           return (
             <div
