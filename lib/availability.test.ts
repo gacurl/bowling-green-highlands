@@ -24,6 +24,17 @@ test("returns an empty array for invalid slot-generation input", () => {
   assert.deepEqual(getAvailableSlots("2026-06-12", "bad", "10:00", []), []);
 });
 
+test("returns no slots for a blocked date", () => {
+  assert.deepEqual(
+    getAvailableSlots("2026-06-12", "09:00", "10:00", [], {
+      "2026-06-12": {
+        mode: "unavailable",
+      },
+    }),
+    [],
+  );
+});
+
 test("marks only one exact reserved slot as unavailable", () => {
   const existingReservations: Slot[] = [
     {

@@ -14,6 +14,10 @@
 /coverage
 /.test-build
 
+# local runtime state
+/data/operator-availability.json
+/data/operator-availability.json.tmp
+
 # next.js
 /.next/
 /out/

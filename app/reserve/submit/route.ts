@@ -52,7 +52,7 @@ export async function POST(request: Request) {
       throw new Error("Invalid email address");
     }
 
-    if (!isReserveExampleSlotValue(requestedDates)) {
+    if (!(await isReserveExampleSlotValue(requestedDates))) {
       throw new Error("Invalid requested slot");
     }
 

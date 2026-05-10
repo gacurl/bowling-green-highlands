@@ -1,10 +1,9 @@
 import { applyReservationAvailability } from "./slot-availability";
+import {
+  isDateUnavailable,
+  type OperatorAvailability,
+} from "./operator-availability";
 import { generateSlots, type Slot } from "./slots";
-
-const BLOCKED_DATES: string[] = [
-  "2026-06-12",
-  "2026-06-13",
-];
 
 function normalizeDate(input: string): string | null {
   if (!input) {
@@ -17,14 +16,17 @@ function normalizeDate(input: string): string | null {
   return isValidFormat ? datePart : null;
 }
 
-export function isDateBlocked(date: string): boolean {
+export function isDateBlocked(
+  availability: OperatorAvailability,
+  date: string,
+): boolean {
   const normalized = normalizeDate(date);
 
   if (!normalized) {
     return false;
   }
 
-  return BLOCKED_DATES.includes(normalized);
+  return isDateUnavailable(availability, normalized);
 }
 
 export function getAvailableSlots(
@@ -32,7 +34,12 @@ export function getAvailableSlots(
   startTime: string,
   endTime: string,
   existingReservations: Slot[],
+  availability: OperatorAvailability = {},
 ): Slot[] {
+  if (isDateBlocked(availability, date)) {
+    return [];
+  }
+
   const generatedSlots = generateSlots(date, startTime, endTime);
 
   return applyReservationAvailability(generatedSlots, existingReservations);

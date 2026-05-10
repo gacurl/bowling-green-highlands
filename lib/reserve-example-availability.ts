@@ -1,4 +1,5 @@
 import { getAvailableSlots } from "./availability";
+import { readOperatorAvailability } from "./operator-availability";
 import type { Slot } from "./slots";
 
 export const RESERVE_EXAMPLE_DATE = "2026-06-14";
@@ -19,17 +20,22 @@ function formatSlotValue(slot: Slot) {
   return `${slot.date} ${slot.startTime} to ${slot.endTime}`;
 }
 
-export function getReserveExampleSlots() {
+export async function getReserveExampleSlots() {
+  const operatorAvailability = await readOperatorAvailability();
+
   return getAvailableSlots(
     RESERVE_EXAMPLE_DATE,
     RESERVE_EXAMPLE_START_TIME,
     RESERVE_EXAMPLE_END_TIME,
     EXISTING_RESERVATIONS,
+    operatorAvailability,
   );
 }
 
-export function isReserveExampleSlotValue(slotValue: string) {
-  return getReserveExampleSlots().some(
+export async function isReserveExampleSlotValue(slotValue: string) {
+  const slots = await getReserveExampleSlots();
+
+  return slots.some(
     (slot) => slot.status === "available" && formatSlotValue(slot) === slotValue,
   );
 }
