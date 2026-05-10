@@ -1,48 +1,18 @@
 "use client";
 
 import { useState } from "react";
+import type { OperatorAvailability } from "../../lib/operator-availability";
 
 const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-const TIME_OPTIONS = [
-  "06:00",
-  "06:30",
-  "07:00",
-  "07:30",
-  "08:00",
-  "08:30",
-  "09:00",
-  "09:30",
-  "10:00",
-  "10:30",
-  "11:00",
-  "11:30",
-  "12:00",
-  "12:30",
-  "13:00",
-  "13:30",
-  "14:00",
-  "14:30",
-  "15:00",
-  "15:30",
-  "16:00",
-  "16:30",
-  "17:00",
-  "17:30",
-  "18:00",
-  "18:30",
-  "19:00",
-  "19:30",
-  "20:00",
-];
+
 type MonthCalendarProps = {
+  initialAvailability: OperatorAvailability;
   todayIso: string;
 };
 
-type AvailabilityMode = "unavailable" | "window";
+type AvailabilityMode = "available" | "unavailable";
 type DayAvailability = {
   mode: AvailabilityMode;
-  startTime: string;
-  endTime: string;
 };
 
 type CalendarCell = {
@@ -51,32 +21,7 @@ type CalendarCell = {
 };
 
 const DEFAULT_DAY_AVAILABILITY: DayAvailability = {
-  mode: "window",
-  startTime: "09:00",
-  endTime: "17:00",
-};
-
-const INITIAL_DAY_AVAILABILITY: Record<string, DayAvailability> = {
-  "2026-04-10": {
-    mode: "unavailable",
-    startTime: "09:00",
-    endTime: "17:00",
-  },
-  "2026-04-18": {
-    mode: "unavailable",
-    startTime: "09:00",
-    endTime: "17:00",
-  },
-  "2026-05-03": {
-    mode: "window",
-    startTime: "10:00",
-    endTime: "15:00",
-  },
-  "2026-05-21": {
-    mode: "unavailable",
-    startTime: "09:00",
-    endTime: "17:00",
-  },
+  mode: "available",
 };
 
 function startOfMonth(date: Date) {
@@ -145,33 +90,57 @@ function buildCalendarCells(monthDate: Date): CalendarCell[] {
   return cells;
 }
 
-export function MonthCalendar({ todayIso }: MonthCalendarProps) {
+export function MonthCalendar({
+  initialAvailability,
+  todayIso,
+}: MonthCalendarProps) {
   const [displayMonth, setDisplayMonth] = useState(() =>
     startOfMonth(new Date(`${todayIso}T00:00:00`)),
   );
-  const [dayAvailability, setDayAvailability] = useState(INITIAL_DAY_AVAILABILITY);
+  const [dayAvailability, setDayAvailability] =
+    useState<Record<string, DayAvailability>>(initialAvailability);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState(false);
   const calendarCells = buildCalendarCells(displayMonth);
   const selectedDayAvailability = selectedDate
     ? dayAvailability[selectedDate] ?? DEFAULT_DAY_AVAILABILITY
     : null;
 
-  function updateSelectedDayAvailability(next: Partial<DayAvailability>) {
+  function updateSelectedDayAvailability(mode: AvailabilityMode) {
     if (!selectedDate) {
       return;
     }
 
-    setDayAvailability((current) => {
-      const currentValue = current[selectedDate] ?? DEFAULT_DAY_AVAILABILITY;
+    const dateToUpdate = selectedDate;
 
-      return {
-        ...current,
-        [selectedDate]: {
-          ...currentValue,
-          ...next,
-        },
-      };
-    });
+    setSaveError(false);
+
+    fetch("/admin/availability", {
+      body: JSON.stringify({ date: dateToUpdate, mode }),
+      headers: {
+        "Content-Type": "application/json",
+      },
+      method: "POST",
+    })
+      .then((response) => {
+        if (!response.ok) {
+          setSaveError(true);
+          return;
+        }
+
+        setDayAvailability((current) => {
+          const nextAvailability = { ...current };
+
+          if (mode === "unavailable") {
+            nextAvailability[dateToUpdate] = { mode: "unavailable" };
+          } else {
+            delete nextAvailability[dateToUpdate];
+          }
+
+          return nextAvailability;
+        });
+      })
+      .catch(() => setSaveError(true));
   }
 
   return (
@@ -222,7 +191,8 @@ export function MonthCalendar({ todayIso }: MonthCalendarProps) {
             ? dayAvailability[cell.isoDate] ?? DEFAULT_DAY_AVAILABILITY
             : null;
           const isBlocked = dayState?.mode === "unavailable";
-          const isSelected = cell.isoDate !== null && cell.isoDate === selectedDate;
+          const isSelected =
+            cell.isoDate !== null && cell.isoDate === selectedDate;
           const stateLabel = isBlocked ? "Blocked" : "Open";
 
           return (
@@ -294,76 +264,27 @@ export function MonthCalendar({ todayIso }: MonthCalendarProps) {
                 name="availabilityMode"
                 value="unavailable"
                 checked={selectedDayAvailability?.mode === "unavailable"}
-                onChange={() =>
-                  updateSelectedDayAvailability({ mode: "unavailable" })
-                }
+                onChange={() => updateSelectedDayAvailability("unavailable")}
                 className="h-4 w-4 border-zinc-300 text-zinc-900 focus:ring-zinc-500"
               />
-              <span className="font-medium">Unavailable (full day)</span>
+              <span className="font-medium">Blocked</span>
             </label>
             <label className="flex items-center gap-3 rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-900">
               <input
                 type="radio"
                 name="availabilityMode"
-                value="window"
-                checked={selectedDayAvailability?.mode === "window"}
-                onChange={() => updateSelectedDayAvailability({ mode: "window" })}
+                value="available"
+                checked={selectedDayAvailability?.mode === "available"}
+                onChange={() => updateSelectedDayAvailability("available")}
                 className="h-4 w-4 border-zinc-300 text-zinc-900 focus:ring-zinc-500"
               />
-              <span className="font-medium">Available with time window</span>
+              <span className="font-medium">Available</span>
             </label>
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <label
-                  htmlFor="startTime"
-                  className="block text-sm font-medium text-zinc-900"
-                >
-                  Start time
-                </label>
-                <select
-                  id="startTime"
-                  value={selectedDayAvailability?.startTime ?? "09:00"}
-                  onChange={(event) =>
-                    updateSelectedDayAvailability({
-                      startTime: event.target.value,
-                    })
-                  }
-                  disabled={selectedDayAvailability?.mode !== "window"}
-                  className="w-full rounded-2xl border border-zinc-300 bg-white px-4 py-3 text-zinc-900 outline-none transition focus:border-zinc-500 disabled:cursor-not-allowed disabled:bg-zinc-100 disabled:text-zinc-500"
-                >
-                  {TIME_OPTIONS.map((time) => (
-                    <option key={time} value={time}>
-                      {time}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="space-y-2">
-                <label
-                  htmlFor="endTime"
-                  className="block text-sm font-medium text-zinc-900"
-                >
-                  End time
-                </label>
-                <select
-                  id="endTime"
-                  value={selectedDayAvailability?.endTime ?? "17:00"}
-                  onChange={(event) =>
-                    updateSelectedDayAvailability({
-                      endTime: event.target.value,
-                    })
-                  }
-                  disabled={selectedDayAvailability?.mode !== "window"}
-                  className="w-full rounded-2xl border border-zinc-300 bg-white px-4 py-3 text-zinc-900 outline-none transition focus:border-zinc-500 disabled:cursor-not-allowed disabled:bg-zinc-100 disabled:text-zinc-500"
-                >
-                  {TIME_OPTIONS.map((time) => (
-                    <option key={time} value={time}>
-                      {time}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
+            {saveError ? (
+              <p className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                Availability could not be saved. Try the change again.
+              </p>
+            ) : null}
           </div>
         </div>
       ) : null}

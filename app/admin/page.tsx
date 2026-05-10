@@ -1,20 +1,22 @@
 import Link from "next/link";
+import { readOperatorAvailability } from "../../lib/operator-availability";
 import { MonthCalendar } from "./month-calendar";
 import { PageShell } from "../components/page-shell";
 
-export default function AdminPage() {
+export default async function AdminPage() {
   const today = new Date();
   const todayIso = [
     today.getFullYear(),
     String(today.getMonth() + 1).padStart(2, "0"),
     String(today.getDate()).padStart(2, "0"),
   ].join("-");
+  const initialAvailability = await readOperatorAvailability();
 
   return (
     <PageShell
       eyebrow="Operator Area"
       title="View the month at a glance."
-      description="Use the calendar below to move through the month and review days. Availability controls are not part of this step yet."
+      description="Use the calendar below to block days that should not be requested publicly."
       action={
         <Link
           href="/"
@@ -24,7 +26,10 @@ export default function AdminPage() {
         </Link>
       }
     >
-      <MonthCalendar todayIso={todayIso} />
+      <MonthCalendar
+        initialAvailability={initialAvailability}
+        todayIso={todayIso}
+      />
     </PageShell>
   );
 }

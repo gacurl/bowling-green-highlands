@@ -15,7 +15,7 @@ type ReservePageProps = {
 export default async function ReservePage({ searchParams }: ReservePageProps) {
   const params = await searchParams;
   const hasError = params.error === "1";
-  const availableSlots = getReserveExampleSlots();
+  const availableSlots = await getReserveExampleSlots();
   const hasSelectableSlots = availableSlots.some(
     (slot) => slot.status === "available",
   );
