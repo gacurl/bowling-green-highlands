@@ -1,5 +1,10 @@
-import { redirect } from "next/navigation";
+import { NextResponse } from "next/server";
 import { isReserveExampleSlotValue } from "../../../lib/reserve-example-availability";
+import {
+  CONFIRMATION_COOKIE_MAX_AGE_SECONDS,
+  CONFIRMATION_COOKIE_NAME,
+  createConfirmationStateCookieValue,
+} from "../../lib/confirmation-state";
 import { sendReservationRequestEmail } from "../../lib/reservation-email";
 
 const BASIC_EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -24,9 +29,18 @@ function isValidEmail(value: string) {
   return BASIC_EMAIL_PATTERN.test(value);
 }
 
+function getConfirmationSigningSecret() {
+  const signingSecret = process.env.SMTP_URL?.trim();
+
+  if (!signingSecret) {
+    throw new Error("Missing confirmation signing secret");
+  }
+
+  return signingSecret;
+}
+
 export async function POST(request: Request) {
   const formData = await request.formData();
-  let confirmationUrl: string;
 
   try {
     const guestName = readRequiredString(formData, "guestName");
@@ -49,10 +63,36 @@ export async function POST(request: Request) {
       requestedDates,
     });
 
-    confirmationUrl = `/confirmation?submitted=1&guestName=${encodeURIComponent(guestName)}&guestEmail=${encodeURIComponent(guestEmail)}&requestedDates=${encodeURIComponent(requestedDates)}&requestNotes=${encodeURIComponent(requestNotes)}&contactEmail=${encodeURIComponent(contactEmail)}`;
-  } catch {
-    redirect("/reserve?error=1");
-  }
+    const response = NextResponse.redirect(
+      new URL("/confirmation", request.url),
+      { status: 303 },
+    );
 
-  redirect(confirmationUrl);
+    response.cookies.set(
+      CONFIRMATION_COOKIE_NAME,
+      createConfirmationStateCookieValue(
+        {
+          contactEmail,
+          guestEmail,
+          guestName,
+          requestedDates,
+          requestNotes,
+        },
+        getConfirmationSigningSecret(),
+      ),
+      {
+        httpOnly: true,
+        maxAge: CONFIRMATION_COOKIE_MAX_AGE_SECONDS,
+        path: "/confirmation",
+        sameSite: "lax",
+        secure: process.env.NODE_ENV === "production",
+      },
+    );
+
+    return response;
+  } catch {
+    return NextResponse.redirect(new URL("/reserve?error=1", request.url), {
+      status: 303,
+    });
+  }
 }
