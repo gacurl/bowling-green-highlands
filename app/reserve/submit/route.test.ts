@@ -122,7 +122,7 @@ test(
   withEnvironment(async () => {
     const sentEmails: SentEmail[] = [];
     mockEmailTransport(sentEmails);
-    const publicSlots = getReserveExampleSlots();
+    const publicSlots = await getReserveExampleSlots();
     const publicOption = publicSlots.find((slot) => slot.status === "available");
 
     assert.ok(publicOption);
