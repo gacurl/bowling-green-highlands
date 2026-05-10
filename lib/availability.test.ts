@@ -3,25 +3,41 @@ import assert from "node:assert/strict";
 import { getAvailableSlots } from "./availability";
 import type { Slot } from "./slots";
 
-test("returns all generated slots as available when there are no reservations", () => {
-  assert.deepEqual(getAvailableSlots("2026-06-12", "09:00", "10:00", []), [
-    {
-      date: "2026-06-12",
-      startTime: "09:00",
-      endTime: "09:30",
-      status: "available",
-    },
-    {
-      date: "2026-06-12",
-      startTime: "09:30",
-      endTime: "10:00",
-      status: "available",
-    },
-  ]);
+const availableDate = {
+  "2026-06-12": {
+    mode: "available" as const,
+  },
+};
+
+test("returns no slots for an unconfigured date by default", () => {
+  assert.deepEqual(getAvailableSlots("2026-06-12", "09:00", "10:00", []), []);
+});
+
+test("returns all generated slots as available for an explicitly available date", () => {
+  assert.deepEqual(
+    getAvailableSlots("2026-06-12", "09:00", "10:00", [], availableDate),
+    [
+      {
+        date: "2026-06-12",
+        startTime: "09:00",
+        endTime: "09:30",
+        status: "available",
+      },
+      {
+        date: "2026-06-12",
+        startTime: "09:30",
+        endTime: "10:00",
+        status: "available",
+      },
+    ],
+  );
 });
 
 test("returns an empty array for invalid slot-generation input", () => {
-  assert.deepEqual(getAvailableSlots("2026-06-12", "bad", "10:00", []), []);
+  assert.deepEqual(
+    getAvailableSlots("2026-06-12", "bad", "10:00", [], availableDate),
+    [],
+  );
 });
 
 test("returns no slots for a blocked date", () => {
@@ -46,7 +62,13 @@ test("marks only one exact reserved slot as unavailable", () => {
   ];
 
   assert.deepEqual(
-    getAvailableSlots("2026-06-12", "09:00", "10:30", existingReservations),
+    getAvailableSlots(
+      "2026-06-12",
+      "09:00",
+      "10:30",
+      existingReservations,
+      availableDate,
+    ),
     [
       {
         date: "2026-06-12",
@@ -81,7 +103,13 @@ test("does not change availability for a non-matching reservation", () => {
   ];
 
   assert.deepEqual(
-    getAvailableSlots("2026-06-12", "09:00", "10:00", existingReservations),
+    getAvailableSlots(
+      "2026-06-12",
+      "09:00",
+      "10:00",
+      existingReservations,
+      availableDate,
+    ),
     [
       {
         date: "2026-06-12",
@@ -100,14 +128,20 @@ test("does not change availability for a non-matching reservation", () => {
 });
 
 test("preserves generated slot ordering", () => {
-  const result = getAvailableSlots("2026-06-12", "09:00", "10:30", [
-    {
-      date: "2026-06-12",
-      startTime: "10:00",
-      endTime: "10:30",
-      status: "available",
-    },
-  ]);
+  const result = getAvailableSlots(
+    "2026-06-12",
+    "09:00",
+    "10:30",
+    [
+      {
+        date: "2026-06-12",
+        startTime: "10:00",
+        endTime: "10:30",
+        status: "available",
+      },
+    ],
+    availableDate,
+  );
 
   assert.deepEqual(
     result.map(({ startTime }) => startTime),
@@ -126,7 +160,13 @@ test("does not mutate reservation inputs", () => {
   ];
   const originalReservations = existingReservations.map((slot) => ({ ...slot }));
 
-  getAvailableSlots("2026-06-12", "09:00", "10:30", existingReservations);
+  getAvailableSlots(
+    "2026-06-12",
+    "09:00",
+    "10:30",
+    existingReservations,
+    availableDate,
+  );
 
   assert.deepEqual(existingReservations, originalReservations);
 });

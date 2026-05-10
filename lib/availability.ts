@@ -1,6 +1,6 @@
 import { applyReservationAvailability } from "./slot-availability";
 import {
-  isDateUnavailable,
+  isDateAvailable,
   type OperatorAvailability,
 } from "./operator-availability";
 import { generateSlots, type Slot } from "./slots";
@@ -26,7 +26,7 @@ export function isDateBlocked(
     return false;
   }
 
-  return isDateUnavailable(availability, normalized);
+  return !isDateAvailable(availability, normalized);
 }
 
 export function getAvailableSlots(

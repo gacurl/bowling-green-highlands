@@ -4,6 +4,7 @@ import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import {
+  isDateAvailable,
   isDateUnavailable,
   readOperatorAvailability,
   setOperatorDateAvailability,
@@ -20,7 +21,12 @@ test("loads default blocked dates when no store exists", async () => {
   const availability = await readOperatorAvailability(await createStorePath());
 
   assert.equal(isDateUnavailable(availability, "2026-04-10"), true);
-  assert.equal(isDateUnavailable(availability, "2026-06-14"), false);
+  assert.equal(isDateAvailable(availability, "2026-06-14"), true);
+});
+
+test("treats unconfigured dates as unavailable by default", () => {
+  assert.equal(isDateUnavailable({}, "2026-07-01"), true);
+  assert.equal(isDateAvailable({}, "2026-07-01"), false);
 });
 
 test("persists a blocked date across reads", async () => {
@@ -33,7 +39,7 @@ test("persists a blocked date across reads", async () => {
   assert.equal(isDateUnavailable(availability, "2026-06-14"), true);
 });
 
-test("persists an available date by removing the blocked date", async () => {
+test("persists an explicitly available date", async () => {
   const storePath = await createStorePath();
 
   await setOperatorDateAvailability("2026-06-14", "unavailable", storePath);
@@ -42,9 +48,37 @@ test("persists an available date by removing the blocked date", async () => {
   const availability = await readOperatorAvailability(storePath);
 
   assert.equal(isDateUnavailable(availability, "2026-06-14"), false);
+  assert.equal(isDateAvailable(availability, "2026-06-14"), true);
 });
 
-test("normalizes persisted blocked dates", async () => {
+test("normalizes persisted availability dates", async () => {
+  const storePath = await createStorePath();
+
+  await writeFile(
+    storePath,
+    JSON.stringify({
+      dates: {
+        "bad-date": "available",
+        "2026-06-14": "available",
+        "2026-06-15": "unavailable",
+        "2026-06-16": "bad-mode",
+      },
+    }),
+    "utf8",
+  );
+
+  const availability = await readOperatorAvailability(storePath);
+
+  assert.deepEqual(
+    availability,
+    toOperatorAvailability({
+      "2026-06-14": "available",
+      "2026-06-15": "unavailable",
+    }),
+  );
+});
+
+test("reads legacy blocked dates as unavailable dates", async () => {
   const storePath = await createStorePath();
 
   await writeFile(
@@ -57,5 +91,8 @@ test("normalizes persisted blocked dates", async () => {
 
   const availability = await readOperatorAvailability(storePath);
 
-  assert.deepEqual(availability, toOperatorAvailability(["2026-06-14"]));
+  assert.deepEqual(
+    availability,
+    toOperatorAvailability({ "2026-06-14": "unavailable" }),
+  );
 });
