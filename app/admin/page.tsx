@@ -15,8 +15,8 @@ export default async function AdminPage() {
   return (
     <PageShell
       eyebrow="Operator Area"
-      title="View the month at a glance."
-      description="Dates are blocked by default. Mark only the days guests may request."
+      title="Set date availability."
+      description="Blocked is the default. Mark only dates guests may request."
       action={
         <Link
           href="/"
