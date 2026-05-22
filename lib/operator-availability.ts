@@ -18,13 +18,6 @@ export const DEFAULT_OPERATOR_DAY_AVAILABILITY: OperatorDayAvailability = {
   mode: "unavailable",
 };
 
-const DEFAULT_OPERATOR_AVAILABILITY: OperatorAvailability = {
-  "2026-04-10": { mode: "unavailable" },
-  "2026-04-18": { mode: "unavailable" },
-  "2026-05-21": { mode: "unavailable" },
-  "2026-06-14": { mode: "available" },
-};
-
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 function getAvailabilityStorePath() {
@@ -136,7 +129,7 @@ export async function readOperatorAvailability(
     return normalizeLegacyBlockedDates(parsedValue.blockedDates);
   } catch (error) {
     if (error instanceof Error && "code" in error && error.code === "ENOENT") {
-      return DEFAULT_OPERATOR_AVAILABILITY;
+      return {};
     }
 
     throw error;

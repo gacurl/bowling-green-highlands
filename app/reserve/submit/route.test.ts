@@ -1,12 +1,19 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import nodemailer from "nodemailer";
+import { mkdtemp } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { POST } from "./route";
 import {
   CONFIRMATION_COOKIE_NAME,
   readConfirmationStateCookieValue,
 } from "../../lib/confirmation-state";
-import { getReserveExampleSlots } from "../../../lib/reserve-example-availability";
+import {
+  getReserveExampleSlots,
+  RESERVE_EXAMPLE_DATE,
+} from "../../../lib/reserve-example-availability";
+import { setOperatorDateAvailability } from "../../../lib/operator-availability";
 
 type SentEmail = {
   from: string;
@@ -80,6 +87,29 @@ function withEnvironment(runTest: () => Promise<void> | void) {
   };
 }
 
+function withAvailabilityStore(runTest: () => Promise<void> | void) {
+  return async () => {
+    const previousStorePath = process.env.BGH_AVAILABILITY_STORE_PATH;
+    const directory = await mkdtemp(path.join(tmpdir(), "bgh-submit-route-"));
+    const testStorePath = path.join(
+      directory,
+      "operator-availability-submit-route-test.json",
+    );
+
+    process.env.BGH_AVAILABILITY_STORE_PATH = testStorePath;
+
+    try {
+      await runTest();
+    } finally {
+      if (previousStorePath === undefined) {
+        delete process.env.BGH_AVAILABILITY_STORE_PATH;
+      } else {
+        process.env.BGH_AVAILABILITY_STORE_PATH = previousStorePath;
+      }
+    }
+  };
+}
+
 function mockEmailTransport(sentEmails: SentEmail[]) {
   nodemailer.createTransport = ((() => ({
     sendMail: async (email: SentEmail) => {
@@ -90,135 +120,176 @@ function mockEmailTransport(sentEmails: SentEmail[]) {
 
 test(
   "valid reservation submissions redirect to confirmation and send email",
-  withEnvironment(async () => {
-    const sentEmails: SentEmail[] = [];
-    mockEmailTransport(sentEmails);
+  withAvailabilityStore(
+    withEnvironment(async () => {
+      await setOperatorDateAvailability(RESERVE_EXAMPLE_DATE, "available");
 
-    const response = await POST(createReservationRequest());
-    const cookie = response.headers.get("set-cookie") ?? "";
-    const cookieValue = /bgh_confirmation_request=([^;]+)/.exec(cookie)?.[1];
+      const sentEmails: SentEmail[] = [];
+      mockEmailTransport(sentEmails);
 
-    assert.equal(response.status, 303);
-    assert.equal(readRedirectPath(response), "/confirmation");
-    assert.match(cookie, new RegExp(`${CONFIRMATION_COOKIE_NAME}=`));
-    assert.deepEqual(
-      readConfirmationStateCookieValue(cookieValue, process.env.SMTP_URL),
-      {
-        contactEmail: "operator@example.com",
-        guestEmail: "guest@example.com",
-        guestName: "Guest Name",
-        requestedDates: "2026-06-14 09:00 to 09:30",
-        requestNotes: "Please call first.",
-      },
-    );
-    assert.equal(sentEmails.length, 1);
-    assert.equal(sentEmails[0].to, "operator@example.com");
-    assert.equal(sentEmails[0].replyTo, "guest@example.com");
-  }),
+      const response = await POST(createReservationRequest());
+      const cookie = response.headers.get("set-cookie") ?? "";
+      const cookieValue = /bgh_confirmation_request=([^;]+)/.exec(cookie)?.[1];
+
+      assert.equal(response.status, 303);
+      assert.equal(readRedirectPath(response), "/confirmation");
+      assert.match(cookie, new RegExp(`${CONFIRMATION_COOKIE_NAME}=`));
+      assert.deepEqual(
+        readConfirmationStateCookieValue(cookieValue, process.env.SMTP_URL),
+        {
+          contactEmail: "operator@example.com",
+          guestEmail: "guest@example.com",
+          guestName: "Guest Name",
+          requestedDates: "2026-06-14 09:00 to 09:30",
+          requestNotes: "Please call first.",
+        },
+      );
+      assert.equal(sentEmails.length, 1);
+      assert.equal(sentEmails[0].to, "operator@example.com");
+      assert.equal(sentEmails[0].replyTo, "guest@example.com");
+    }),
+  ),
 );
 
 test(
   "submit validation accepts the same available options shown publicly",
-  withEnvironment(async () => {
-    const sentEmails: SentEmail[] = [];
-    mockEmailTransport(sentEmails);
-    const publicSlots = await getReserveExampleSlots();
-    const publicOption = publicSlots.find((slot) => slot.status === "available");
+  withAvailabilityStore(
+    withEnvironment(async () => {
+      await setOperatorDateAvailability(RESERVE_EXAMPLE_DATE, "available");
 
-    assert.ok(publicOption);
+      const sentEmails: SentEmail[] = [];
+      mockEmailTransport(sentEmails);
+      const publicSlots = await getReserveExampleSlots();
+      const publicOption = publicSlots.find((slot) => slot.status === "available");
 
-    const requestedDates = `${publicOption.date} ${publicOption.startTime} to ${publicOption.endTime}`;
-    const response = await POST(createReservationRequest({ requestedDates }));
+      assert.ok(publicOption);
 
-    assert.equal(response.status, 303);
-    assert.equal(readRedirectPath(response), "/confirmation");
-    assert.equal(sentEmails.length, 1);
-  }),
+      const requestedDates = `${publicOption.date} ${publicOption.startTime} to ${publicOption.endTime}`;
+      const response = await POST(createReservationRequest({ requestedDates }));
+
+      assert.equal(response.status, 303);
+      assert.equal(readRedirectPath(response), "/confirmation");
+      assert.equal(sentEmails.length, 1);
+    }),
+  ),
+);
+
+test(
+  "unconfigured dates cannot be submitted",
+  withAvailabilityStore(
+    withEnvironment(async () => {
+      const sentEmails: SentEmail[] = [];
+      mockEmailTransport(sentEmails);
+
+      const response = await POST(createReservationRequest());
+
+      assert.equal(response.status, 303);
+      assert.equal(readRedirectPath(response), "/reserve?error=1");
+      assert.equal(response.headers.get("set-cookie"), null);
+      assert.equal(sentEmails.length, 0);
+    }),
+  ),
 );
 
 test(
   "blocked dates cannot be submitted",
-  withEnvironment(async () => {
-    const sentEmails: SentEmail[] = [];
-    mockEmailTransport(sentEmails);
+  withAvailabilityStore(
+    withEnvironment(async () => {
+      await setOperatorDateAvailability(RESERVE_EXAMPLE_DATE, "unavailable");
 
-    const response = await POST(
-      createReservationRequest({
-        requestedDates: "2026-06-12 09:00 to 09:30",
-      }),
-    );
+      const sentEmails: SentEmail[] = [];
+      mockEmailTransport(sentEmails);
 
-    assert.equal(response.status, 303);
-    assert.equal(readRedirectPath(response), "/reserve?error=1");
-    assert.equal(response.headers.get("set-cookie"), null);
-    assert.equal(sentEmails.length, 0);
-  }),
+      const response = await POST(createReservationRequest());
+
+      assert.equal(response.status, 303);
+      assert.equal(readRedirectPath(response), "/reserve?error=1");
+      assert.equal(response.headers.get("set-cookie"), null);
+      assert.equal(sentEmails.length, 0);
+    }),
+  ),
 );
 
 test(
   "unavailable public options cannot be submitted",
-  withEnvironment(async () => {
-    const sentEmails: SentEmail[] = [];
-    mockEmailTransport(sentEmails);
+  withAvailabilityStore(
+    withEnvironment(async () => {
+      await setOperatorDateAvailability(RESERVE_EXAMPLE_DATE, "available");
 
-    const response = await POST(
-      createReservationRequest({
-        requestedDates: "2026-06-14 09:30 to 10:00",
-      }),
-    );
+      const sentEmails: SentEmail[] = [];
+      mockEmailTransport(sentEmails);
 
-    assert.equal(response.status, 303);
-    assert.equal(readRedirectPath(response), "/reserve?error=1");
-    assert.equal(response.headers.get("set-cookie"), null);
-    assert.equal(sentEmails.length, 0);
-  }),
+      const response = await POST(
+        createReservationRequest({
+          requestedDates: "2026-06-14 09:30 to 10:00",
+        }),
+      );
+
+      assert.equal(response.status, 303);
+      assert.equal(readRedirectPath(response), "/reserve?error=1");
+      assert.equal(response.headers.get("set-cookie"), null);
+      assert.equal(sentEmails.length, 0);
+    }),
+  ),
 );
 
 test(
   "forged reservation options fail safely",
-  withEnvironment(async () => {
-    const sentEmails: SentEmail[] = [];
-    mockEmailTransport(sentEmails);
+  withAvailabilityStore(
+    withEnvironment(async () => {
+      await setOperatorDateAvailability(RESERVE_EXAMPLE_DATE, "available");
 
-    const response = await POST(
-      createReservationRequest({
-        requestedDates: "2026-06-14 08:30 to 09:00",
-      }),
-    );
+      const sentEmails: SentEmail[] = [];
+      mockEmailTransport(sentEmails);
 
-    assert.equal(response.status, 303);
-    assert.equal(readRedirectPath(response), "/reserve?error=1");
-    assert.equal(response.headers.get("set-cookie"), null);
-    assert.equal(sentEmails.length, 0);
-  }),
+      const response = await POST(
+        createReservationRequest({
+          requestedDates: "2026-06-14 08:30 to 09:00",
+        }),
+      );
+
+      assert.equal(response.status, 303);
+      assert.equal(readRedirectPath(response), "/reserve?error=1");
+      assert.equal(response.headers.get("set-cookie"), null);
+      assert.equal(sentEmails.length, 0);
+    }),
+  ),
 );
 
 test(
   "invalid submission payloads fail safely",
-  withEnvironment(async () => {
-    const sentEmails: SentEmail[] = [];
-    mockEmailTransport(sentEmails);
+  withAvailabilityStore(
+    withEnvironment(async () => {
+      await setOperatorDateAvailability(RESERVE_EXAMPLE_DATE, "available");
 
-    const response = await POST(createReservationRequest({ guestEmail: "bad" }));
+      const sentEmails: SentEmail[] = [];
+      mockEmailTransport(sentEmails);
 
-    assert.equal(response.status, 303);
-    assert.equal(readRedirectPath(response), "/reserve?error=1");
-    assert.equal(response.headers.get("set-cookie"), null);
-    assert.equal(sentEmails.length, 0);
-  }),
+      const response = await POST(createReservationRequest({ guestEmail: "bad" }));
+
+      assert.equal(response.status, 303);
+      assert.equal(readRedirectPath(response), "/reserve?error=1");
+      assert.equal(response.headers.get("set-cookie"), null);
+      assert.equal(sentEmails.length, 0);
+    }),
+  ),
 );
 
 test(
   "missing required submission fields fail safely",
-  withEnvironment(async () => {
-    const sentEmails: SentEmail[] = [];
-    mockEmailTransport(sentEmails);
+  withAvailabilityStore(
+    withEnvironment(async () => {
+      await setOperatorDateAvailability(RESERVE_EXAMPLE_DATE, "available");
 
-    const response = await POST(createReservationRequest({ guestName: "" }));
+      const sentEmails: SentEmail[] = [];
+      mockEmailTransport(sentEmails);
 
-    assert.equal(response.status, 303);
-    assert.equal(readRedirectPath(response), "/reserve?error=1");
-    assert.equal(response.headers.get("set-cookie"), null);
-    assert.equal(sentEmails.length, 0);
-  }),
+      const response = await POST(createReservationRequest({ guestName: "" }));
+
+      assert.equal(response.status, 303);
+      assert.equal(readRedirectPath(response), "/reserve?error=1");
+      assert.equal(response.headers.get("set-cookie"), null);
+      assert.equal(sentEmails.length, 0);
+    }),
+  ),
 );
