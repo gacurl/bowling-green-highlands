@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { isReserveExampleSlotValue } from "../../../lib/reserve-example-availability";
 import { normalizeEventType } from "../../lib/event-type";
+import { createReservationRequestRecord } from "../../lib/reservation-requests";
 import {
   CONFIRMATION_COOKIE_MAX_AGE_SECONDS,
   CONFIRMATION_COOKIE_NAME,
@@ -64,6 +65,21 @@ export async function POST(request: Request) {
 
     if (!normalizedEventType) {
       throw new Error("Invalid event type");
+    }
+
+    try {
+      await createReservationRequestRecord({
+        eventType: normalizedEventType,
+        guestEmail,
+        guestName,
+        requestNotes,
+        requestedDates,
+      });
+    } catch {
+      return NextResponse.redirect(
+        new URL(DELIVERY_ERROR_QUERY, request.url),
+        { status: 303 },
+      );
     }
 
     let contactEmail: string;

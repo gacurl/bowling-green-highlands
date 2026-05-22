@@ -13,6 +13,7 @@ import {
   getReserveExampleSlots,
   RESERVE_EXAMPLE_DATE,
 } from "../../../lib/reserve-example-availability";
+import { readReservationRequests } from "../../lib/reservation-requests";
 import { setOperatorDateAvailability } from "../../../lib/operator-availability";
 
 type SentEmail = {
@@ -91,13 +92,20 @@ function withEnvironment(runTest: () => Promise<void> | void) {
 function withAvailabilityStore(runTest: () => Promise<void> | void) {
   return async () => {
     const previousStorePath = process.env.BGH_AVAILABILITY_STORE_PATH;
+    const previousRequestStorePath =
+      process.env.BGH_RESERVATION_REQUESTS_STORE_PATH;
     const directory = await mkdtemp(path.join(tmpdir(), "bgh-submit-route-"));
     const testStorePath = path.join(
       directory,
       "operator-availability-submit-route-test.json",
     );
+    const requestStorePath = path.join(
+      directory,
+      "reservation-requests-submit-route-test.json",
+    );
 
     process.env.BGH_AVAILABILITY_STORE_PATH = testStorePath;
+    process.env.BGH_RESERVATION_REQUESTS_STORE_PATH = requestStorePath;
 
     try {
       await runTest();
@@ -106,6 +114,12 @@ function withAvailabilityStore(runTest: () => Promise<void> | void) {
         delete process.env.BGH_AVAILABILITY_STORE_PATH;
       } else {
         process.env.BGH_AVAILABILITY_STORE_PATH = previousStorePath;
+      }
+
+      if (previousRequestStorePath === undefined) {
+        delete process.env.BGH_RESERVATION_REQUESTS_STORE_PATH;
+      } else {
+        process.env.BGH_RESERVATION_REQUESTS_STORE_PATH = previousRequestStorePath;
       }
     }
   };
@@ -169,6 +183,21 @@ test(
         sentEmails[0].text,
         /This is a request only\. Review and reply directly to the guest\./,
       );
+
+      const reservationRequests = await readReservationRequests();
+
+      assert.equal(reservationRequests.length, 1);
+      assert.equal(reservationRequests[0].status, "pending");
+      assert.equal(reservationRequests[0].eventType, "farm_stay");
+      assert.equal(reservationRequests[0].guestName, "Guest Name");
+      assert.equal(reservationRequests[0].guestEmail, "guest@example.com");
+      assert.equal(
+        reservationRequests[0].requestedDates,
+        "2026-06-14 09:00 to 09:30",
+      );
+      assert.equal(reservationRequests[0].requestNotes, "Please call first.");
+      assert.match(reservationRequests[0].id, /^[0-9a-f-]{36}$/);
+      assert.ok(!Number.isNaN(Date.parse(reservationRequests[0].createdAt)));
     }),
   ),
 );
@@ -185,6 +214,10 @@ test(
       assert.equal(response.status, 303);
       assert.equal(readRedirectPath(response), "/reserve?error=delivery");
       assert.equal(response.headers.get("set-cookie"), null);
+
+      const reservationRequests = await readReservationRequests();
+
+      assert.equal(reservationRequests.length, 1);
     }),
   ),
 );
@@ -251,6 +284,7 @@ test(
       assert.equal(readRedirectPath(response), "/reserve?error=validation");
       assert.equal(response.headers.get("set-cookie"), null);
       assert.equal(sentEmails.length, 0);
+      assert.deepEqual(await readReservationRequests(), []);
     }),
   ),
 );
@@ -270,6 +304,7 @@ test(
       assert.equal(readRedirectPath(response), "/reserve?error=validation");
       assert.equal(response.headers.get("set-cookie"), null);
       assert.equal(sentEmails.length, 0);
+      assert.deepEqual(await readReservationRequests(), []);
     }),
   ),
 );
@@ -293,6 +328,7 @@ test(
       assert.equal(readRedirectPath(response), "/reserve?error=validation");
       assert.equal(response.headers.get("set-cookie"), null);
       assert.equal(sentEmails.length, 0);
+      assert.deepEqual(await readReservationRequests(), []);
     }),
   ),
 );
@@ -316,6 +352,7 @@ test(
       assert.equal(readRedirectPath(response), "/reserve?error=validation");
       assert.equal(response.headers.get("set-cookie"), null);
       assert.equal(sentEmails.length, 0);
+      assert.deepEqual(await readReservationRequests(), []);
     }),
   ),
 );
@@ -341,6 +378,7 @@ test(
       assert.equal(readRedirectPath(response), "/reserve?error=validation");
       assert.equal(response.headers.get("set-cookie"), null);
       assert.equal(sentEmails.length, 0);
+      assert.deepEqual(await readReservationRequests(), []);
     }),
   ),
 );
@@ -363,6 +401,7 @@ test(
       assert.equal(readRedirectPath(response), "/reserve?error=validation");
       assert.equal(response.headers.get("set-cookie"), null);
       assert.equal(sentEmails.length, 0);
+      assert.deepEqual(await readReservationRequests(), []);
     }),
   ),
 );
