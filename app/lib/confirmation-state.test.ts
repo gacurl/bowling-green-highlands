@@ -10,6 +10,7 @@ const signingSecret = "test-signing-secret";
 
 const confirmationState: ConfirmationState = {
   contactEmail: "operator@example.com",
+  eventType: "farm_stay",
   guestEmail: "guest@example.com",
   guestName: "Guest Name",
   requestedDates: "2026-06-12 09:00 to 09:30",

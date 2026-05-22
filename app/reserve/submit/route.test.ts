@@ -27,6 +27,7 @@ const originalCreateTransport = nodemailer.createTransport;
 
 function createReservationRequest(overrides: Record<string, string> = {}) {
   const formData = new URLSearchParams({
+    eventType: "farm_stay",
     guestEmail: "guest@example.com",
     guestName: "Guest Name",
     requestedDates: "2026-06-14 09:00 to 09:30",
@@ -118,6 +119,14 @@ function mockEmailTransport(sentEmails: SentEmail[]) {
   })) as unknown) as typeof nodemailer.createTransport;
 }
 
+function mockFailingEmailTransport() {
+  nodemailer.createTransport = ((() => ({
+    sendMail: async () => {
+      throw new Error("SMTP unavailable");
+    },
+  })) as unknown) as typeof nodemailer.createTransport;
+}
+
 test(
   "valid reservation submissions redirect to confirmation and send email",
   withAvailabilityStore(
@@ -138,6 +147,7 @@ test(
         readConfirmationStateCookieValue(cookieValue, process.env.SMTP_URL),
         {
           contactEmail: "operator@example.com",
+          eventType: "farm_stay",
           guestEmail: "guest@example.com",
           guestName: "Guest Name",
           requestedDates: "2026-06-14 09:00 to 09:30",
@@ -147,6 +157,23 @@ test(
       assert.equal(sentEmails.length, 1);
       assert.equal(sentEmails[0].to, "operator@example.com");
       assert.equal(sentEmails[0].replyTo, "guest@example.com");
+      assert.match(sentEmails[0].text, /Event type: Farm stay/);
+    }),
+  ),
+);
+
+test(
+  "delivery failures redirect to reserve delivery error",
+  withAvailabilityStore(
+    withEnvironment(async () => {
+      await setOperatorDateAvailability(RESERVE_EXAMPLE_DATE, "available");
+      mockFailingEmailTransport();
+
+      const response = await POST(createReservationRequest());
+
+      assert.equal(response.status, 303);
+      assert.equal(readRedirectPath(response), "/reserve?error=delivery");
+      assert.equal(response.headers.get("set-cookie"), null);
     }),
   ),
 );
@@ -175,6 +202,32 @@ test(
 );
 
 test(
+  "submissions can target a second operator-available date",
+  withAvailabilityStore(
+    withEnvironment(async () => {
+      await setOperatorDateAvailability("2026-06-14", "available");
+      await setOperatorDateAvailability("2026-06-15", "available");
+
+      const sentEmails: SentEmail[] = [];
+      mockEmailTransport(sentEmails);
+      const publicSlots = await getReserveExampleSlots();
+      const secondDateOption = publicSlots.find(
+        (slot) => slot.status === "available" && slot.date === "2026-06-15",
+      );
+
+      assert.ok(secondDateOption);
+
+      const requestedDates = `${secondDateOption.date} ${secondDateOption.startTime} to ${secondDateOption.endTime}`;
+      const response = await POST(createReservationRequest({ requestedDates }));
+
+      assert.equal(response.status, 303);
+      assert.equal(readRedirectPath(response), "/confirmation");
+      assert.equal(sentEmails.length, 1);
+    }),
+  ),
+);
+
+test(
   "unconfigured dates cannot be submitted",
   withAvailabilityStore(
     withEnvironment(async () => {
@@ -184,7 +237,7 @@ test(
       const response = await POST(createReservationRequest());
 
       assert.equal(response.status, 303);
-      assert.equal(readRedirectPath(response), "/reserve?error=1");
+      assert.equal(readRedirectPath(response), "/reserve?error=validation");
       assert.equal(response.headers.get("set-cookie"), null);
       assert.equal(sentEmails.length, 0);
     }),
@@ -203,7 +256,7 @@ test(
       const response = await POST(createReservationRequest());
 
       assert.equal(response.status, 303);
-      assert.equal(readRedirectPath(response), "/reserve?error=1");
+      assert.equal(readRedirectPath(response), "/reserve?error=validation");
       assert.equal(response.headers.get("set-cookie"), null);
       assert.equal(sentEmails.length, 0);
     }),
@@ -226,7 +279,7 @@ test(
       );
 
       assert.equal(response.status, 303);
-      assert.equal(readRedirectPath(response), "/reserve?error=1");
+      assert.equal(readRedirectPath(response), "/reserve?error=validation");
       assert.equal(response.headers.get("set-cookie"), null);
       assert.equal(sentEmails.length, 0);
     }),
@@ -249,7 +302,7 @@ test(
       );
 
       assert.equal(response.status, 303);
-      assert.equal(readRedirectPath(response), "/reserve?error=1");
+      assert.equal(readRedirectPath(response), "/reserve?error=validation");
       assert.equal(response.headers.get("set-cookie"), null);
       assert.equal(sentEmails.length, 0);
     }),
@@ -274,7 +327,7 @@ test(
       const response = await POST(createReservationRequest({ requestedDates }));
 
       assert.equal(response.status, 303);
-      assert.equal(readRedirectPath(response), "/reserve?error=1");
+      assert.equal(readRedirectPath(response), "/reserve?error=validation");
       assert.equal(response.headers.get("set-cookie"), null);
       assert.equal(sentEmails.length, 0);
     }),
@@ -296,7 +349,60 @@ test(
       );
 
       assert.equal(response.status, 303);
-      assert.equal(readRedirectPath(response), "/reserve?error=1");
+      assert.equal(readRedirectPath(response), "/reserve?error=validation");
+      assert.equal(response.headers.get("set-cookie"), null);
+      assert.equal(sentEmails.length, 0);
+    }),
+  ),
+);
+
+test(
+  "legacy event type values are normalized before confirmation and email",
+  withAvailabilityStore(
+    withEnvironment(async () => {
+      await setOperatorDateAvailability(RESERVE_EXAMPLE_DATE, "available");
+
+      const sentEmails: SentEmail[] = [];
+      mockEmailTransport(sentEmails);
+      const response = await POST(
+        createReservationRequest({ eventType: "farm stay" }),
+      );
+      const cookie = response.headers.get("set-cookie") ?? "";
+      const cookieValue = /bgh_confirmation_request=([^;]+)/.exec(cookie)?.[1];
+
+      assert.equal(response.status, 303);
+      assert.equal(readRedirectPath(response), "/confirmation");
+      assert.deepEqual(
+        readConfirmationStateCookieValue(cookieValue, process.env.SMTP_URL),
+        {
+          contactEmail: "operator@example.com",
+          eventType: "farm_stay",
+          guestEmail: "guest@example.com",
+          guestName: "Guest Name",
+          requestedDates: "2026-06-14 09:00 to 09:30",
+          requestNotes: "Please call first.",
+        },
+      );
+      assert.equal(sentEmails.length, 1);
+      assert.match(sentEmails[0].text, /Event type: Farm stay/);
+    }),
+  ),
+);
+
+test(
+  "unsupported event types are rejected",
+  withAvailabilityStore(
+    withEnvironment(async () => {
+      await setOperatorDateAvailability(RESERVE_EXAMPLE_DATE, "available");
+
+      const sentEmails: SentEmail[] = [];
+      mockEmailTransport(sentEmails);
+      const response = await POST(
+        createReservationRequest({ eventType: "birthday-party" }),
+      );
+
+      assert.equal(response.status, 303);
+      assert.equal(readRedirectPath(response), "/reserve?error=validation");
       assert.equal(response.headers.get("set-cookie"), null);
       assert.equal(sentEmails.length, 0);
     }),
@@ -315,7 +421,7 @@ test(
       const response = await POST(createReservationRequest({ guestEmail: "bad" }));
 
       assert.equal(response.status, 303);
-      assert.equal(readRedirectPath(response), "/reserve?error=1");
+      assert.equal(readRedirectPath(response), "/reserve?error=validation");
       assert.equal(response.headers.get("set-cookie"), null);
       assert.equal(sentEmails.length, 0);
     }),
@@ -334,7 +440,7 @@ test(
       const response = await POST(createReservationRequest({ guestName: "" }));
 
       assert.equal(response.status, 303);
-      assert.equal(readRedirectPath(response), "/reserve?error=1");
+      assert.equal(readRedirectPath(response), "/reserve?error=validation");
       assert.equal(response.headers.get("set-cookie"), null);
       assert.equal(sentEmails.length, 0);
     }),

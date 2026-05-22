@@ -2,10 +2,9 @@ import { getAvailableSlots } from "./availability";
 import { readOperatorAvailability } from "./operator-availability";
 import type { Slot } from "./slots";
 
-export const RESERVE_EXAMPLE_DATE = "2026-06-14";
-export const RESERVE_EXAMPLE_DATE_LABEL = "Sunday, June 14, 2026";
 export const RESERVE_EXAMPLE_START_TIME = "09:00";
 export const RESERVE_EXAMPLE_END_TIME = "11:00";
+export const RESERVE_EXAMPLE_DATE = "2026-06-14";
 
 const EXISTING_RESERVATIONS: Slot[] = [
   {
@@ -38,13 +37,19 @@ function parseSlotValue(slotValue: string) {
 
 export async function getReserveExampleSlots() {
   const operatorAvailability = await readOperatorAvailability();
+  const availableDates = Object.entries(operatorAvailability)
+    .filter(([, dayAvailability]) => dayAvailability.mode === "available")
+    .map(([date]) => date)
+    .sort((firstDate, secondDate) => firstDate.localeCompare(secondDate));
 
-  return getAvailableSlots(
-    RESERVE_EXAMPLE_DATE,
-    RESERVE_EXAMPLE_START_TIME,
-    RESERVE_EXAMPLE_END_TIME,
-    EXISTING_RESERVATIONS,
-    operatorAvailability,
+  return availableDates.flatMap((date) =>
+    getAvailableSlots(
+      date,
+      RESERVE_EXAMPLE_START_TIME,
+      RESERVE_EXAMPLE_END_TIME,
+      EXISTING_RESERVATIONS,
+      operatorAvailability,
+    ),
   );
 }
 

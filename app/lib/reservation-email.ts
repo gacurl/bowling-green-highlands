@@ -1,6 +1,8 @@
 import nodemailer from "nodemailer";
+import { getEventTypeLabel, type EventTypeValue } from "./event-type";
 
 type ReservationEmailInput = {
+  eventType: EventTypeValue;
   guestEmail: string;
   guestName: string;
   requestNotes: string;
@@ -18,6 +20,7 @@ function requireEnv(name: string) {
 }
 
 export async function sendReservationRequestEmail({
+  eventType,
   guestEmail,
   guestName,
   requestNotes,
@@ -34,6 +37,7 @@ export async function sendReservationRequestEmail({
     "",
     `Name: ${guestName}`,
     `Email: ${guestEmail}`,
+    `Event type: ${getEventTypeLabel(eventType)}`,
     `Requested example slot: ${requestedDates}`,
     `Notes: ${requestNotes || "None provided"}`,
     "",
