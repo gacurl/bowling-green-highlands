@@ -6,12 +6,16 @@ import { readReservationRequests } from "../../../lib/reservation-requests";
 
 type RequestDetailPageProps = {
   params: Promise<{ requestId: string }>;
+  searchParams?: Promise<{ error?: string }>;
 };
 
 export default async function RequestDetailPage({
   params,
+  searchParams,
 }: RequestDetailPageProps) {
   const { requestId } = await params;
+  const resolvedSearchParams = searchParams ? await searchParams : {};
+  const error = resolvedSearchParams.error;
   const reservationRequests = await readReservationRequests();
   const requestDetail = toReservationRequestDetailItem(
     reservationRequests,
@@ -44,7 +48,7 @@ export default async function RequestDetailPage({
           </div>
           <div>
             <dt className="font-medium text-zinc-900">Status</dt>
-            <dd>{requestDetail.status}</dd>
+            <dd className="capitalize">{requestDetail.status}</dd>
           </div>
           <div>
             <dt className="font-medium text-zinc-900">Name</dt>
@@ -71,6 +75,40 @@ export default async function RequestDetailPage({
             <dd>{requestDetail.id}</dd>
           </div>
         </dl>
+        {error === "invalid_status" ? (
+          <p className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            Invalid status update. Try again.
+          </p>
+        ) : null}
+        {error === "invalid_transition" ? (
+          <p className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            This request status is already set.
+          </p>
+        ) : null}
+        {requestDetail.status === "pending" ? (
+          <form
+            action={`/admin/requests/${requestDetail.id}/status`}
+            method="post"
+            className="mt-6 flex flex-wrap items-center gap-3"
+          >
+            <button
+              type="submit"
+              name="status"
+              value="accepted"
+              className="inline-flex items-center justify-center rounded-full bg-zinc-900 px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-700"
+            >
+              Accept request
+            </button>
+            <button
+              type="submit"
+              name="status"
+              value="declined"
+              className="inline-flex items-center justify-center rounded-full border border-zinc-300 bg-white px-5 py-2 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-100"
+            >
+              Decline request
+            </button>
+          </form>
+        ) : null}
       </article>
     </PageShell>
   );
