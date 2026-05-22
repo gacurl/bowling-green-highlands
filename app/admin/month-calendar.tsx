@@ -104,6 +104,8 @@ export function MonthCalendar({
   const selectedDayAvailability = selectedDate
     ? dayAvailability[selectedDate] ?? DEFAULT_DAY_AVAILABILITY
     : null;
+  const selectedDayStateLabel =
+    selectedDayAvailability?.mode === "available" ? "Available" : "Blocked";
 
   function updateSelectedDayAvailability(mode: OperatorAvailabilityMode) {
     if (!selectedDate) {
@@ -217,16 +219,9 @@ export function MonthCalendar({
                 <button
                   type="button"
                   onClick={() => setSelectedDate(cell.isoDate)}
-                  className="flex h-full w-full flex-col justify-between text-left"
+                  className="flex h-full w-full items-start text-left"
                 >
                   <span className="font-medium">{cell.dayNumber}</span>
-                  <span
-                    className={`text-xs font-medium ${
-                      isToday ? "text-current/80" : "text-current/70"
-                    }`}
-                  >
-                    {stateLabel}
-                  </span>
                 </button>
               ) : null}
             </div>
@@ -238,10 +233,13 @@ export function MonthCalendar({
           <div className="flex items-start justify-between gap-4">
             <div className="space-y-1">
               <h3 className="text-lg font-semibold text-zinc-900">
-                Edit availability
+                Set availability
               </h3>
               <p className="text-sm text-zinc-600">
                 {formatSelectedDate(selectedDate)}
+              </p>
+              <p className="text-sm font-medium text-zinc-800">
+                Current: {selectedDayStateLabel}
               </p>
             </div>
             <button
@@ -249,7 +247,7 @@ export function MonthCalendar({
               onClick={() => setSelectedDate(null)}
               className="rounded-full border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 transition hover:border-zinc-500 hover:text-zinc-900"
             >
-              Close
+              Done
             </button>
           </div>
           <div className="mt-5 space-y-4">
@@ -262,7 +260,7 @@ export function MonthCalendar({
                 onChange={() => updateSelectedDayAvailability("unavailable")}
                 className="h-4 w-4 border-zinc-300 text-zinc-900 focus:ring-zinc-500"
               />
-              <span className="font-medium">Blocked</span>
+              <span className="font-medium">Blocked (not requestable)</span>
             </label>
             <label className="flex items-center gap-3 rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-900">
               <input
@@ -273,7 +271,7 @@ export function MonthCalendar({
                 onChange={() => updateSelectedDayAvailability("available")}
                 className="h-4 w-4 border-zinc-300 text-zinc-900 focus:ring-zinc-500"
               />
-              <span className="font-medium">Available</span>
+              <span className="font-medium">Available (requestable)</span>
             </label>
             {saveError ? (
               <p className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
