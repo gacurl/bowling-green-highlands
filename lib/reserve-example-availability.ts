@@ -20,6 +20,22 @@ function formatSlotValue(slot: Slot) {
   return `${slot.date} ${slot.startTime} to ${slot.endTime}`;
 }
 
+function parseSlotValue(slotValue: string) {
+  const match = /^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}) to (\d{2}:\d{2})$/.exec(
+    slotValue,
+  );
+
+  if (!match) {
+    return null;
+  }
+
+  return {
+    date: match[1],
+    startTime: match[2],
+    endTime: match[3],
+  };
+}
+
 export async function getReserveExampleSlots() {
   const operatorAvailability = await readOperatorAvailability();
 
@@ -33,9 +49,20 @@ export async function getReserveExampleSlots() {
 }
 
 export async function isReserveExampleSlotValue(slotValue: string) {
+  const parsedSlot = parseSlotValue(slotValue);
+
+  if (!parsedSlot) {
+    return false;
+  }
+
   const slots = await getReserveExampleSlots();
 
   return slots.some(
-    (slot) => slot.status === "available" && formatSlotValue(slot) === slotValue,
+    (slot) =>
+      slot.status === "available" &&
+      slot.date === parsedSlot.date &&
+      slot.startTime === parsedSlot.startTime &&
+      slot.endTime === parsedSlot.endTime &&
+      formatSlotValue(slot) === slotValue,
   );
 }
