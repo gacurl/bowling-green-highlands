@@ -3,7 +3,8 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { EventTypeValue } from "./event-type";
 
-export type ReservationRequestStatus = "pending";
+export type ReservationRequestStatus = "pending" | "accepted" | "declined";
+export type ReservationRequestStatusUpdate = "accepted" | "declined";
 
 export type ReservationRequestRecord = {
   createdAt: string;
@@ -27,6 +28,12 @@ type CreateReservationRequestInput = {
   requestNotes: string;
   requestedDates: string;
 };
+
+export function isReservationRequestStatusUpdate(
+  value: string,
+): value is ReservationRequestStatusUpdate {
+  return value === "accepted" || value === "declined";
+}
 
 function getReservationRequestStorePath() {
   return (
@@ -52,7 +59,9 @@ function normalizeReservationRequestRecord(
     typeof record.requestNotes !== "string" ||
     typeof record.requestedDates !== "string" ||
     typeof record.eventType !== "string" ||
-    record.status !== "pending"
+    (record.status !== "pending" &&
+      record.status !== "accepted" &&
+      record.status !== "declined")
   ) {
     return null;
   }
@@ -65,7 +74,7 @@ function normalizeReservationRequestRecord(
     id: record.id,
     requestNotes: record.requestNotes,
     requestedDates: record.requestedDates,
-    status: "pending",
+    status: record.status,
   };
 }
 
@@ -152,4 +161,39 @@ export async function createReservationRequestRecord(
   await writeReservationRequests(requests, storePath);
 
   return requestRecord;
+}
+
+export async function updateReservationRequestStatus(
+  requestId: string,
+  status: ReservationRequestStatusUpdate,
+  storePath = getReservationRequestStorePath(),
+): Promise<"updated" | "not_found" | "invalid_transition"> {
+  const requests = await readReservationRequests(storePath);
+  const request = requests.find((requestRecord) => requestRecord.id === requestId);
+
+  if (!request) {
+    return "not_found";
+  }
+
+  if (request.status !== "pending") {
+    return "invalid_transition";
+  }
+
+  let statusUpdated = false;
+  const updatedRequests = requests.map((requestRecord) => {
+    if (requestRecord.id !== requestId || statusUpdated) {
+      return requestRecord;
+    }
+
+    statusUpdated = true;
+
+    return {
+      ...requestRecord,
+      status,
+    };
+  });
+
+  await writeReservationRequests(updatedRequests, storePath);
+
+  return "updated";
 }
