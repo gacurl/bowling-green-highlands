@@ -34,15 +34,19 @@ export async function sendReservationRequestEmail({
   const transport = nodemailer.createTransport(smtpUrl);
 
   const text = [
-    "New Bowling Green Highlands reservation request",
+    "Bowling Green Highlands reservation request",
     "",
-    `Name: ${guestName}`,
-    `Email: ${guestEmail}`,
-    `Event type: ${getEventTypeLabel(eventType)}`,
-    `Requested date and time: ${formatRequestedSlotLabel(requestedDates)}`,
-    `Notes: ${requestNotes || "None provided"}`,
+    "Guest details",
+    `- Name: ${guestName}`,
+    `- Email: ${guestEmail}`,
     "",
-    "This is a request only. Please review and reply directly to the guest.",
+    "Request details",
+    `- Requested date and time: ${formatRequestedSlotLabel(requestedDates)}`,
+    `- Event type: ${getEventTypeLabel(eventType)}`,
+    `- Notes: ${requestNotes || "None provided"}`,
+    "",
+    "Next step",
+    "This is a request only. Review and reply directly to the guest.",
   ].join("\n");
 
   await transport.sendMail({
