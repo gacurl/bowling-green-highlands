@@ -1,4 +1,5 @@
 import nodemailer from "nodemailer";
+import { formatRequestedSlotLabel } from "../../lib/requested-slot";
 import { getEventTypeLabel, type EventTypeValue } from "./event-type";
 
 type ReservationEmailInput = {
@@ -38,7 +39,7 @@ export async function sendReservationRequestEmail({
     `Name: ${guestName}`,
     `Email: ${guestEmail}`,
     `Event type: ${getEventTypeLabel(eventType)}`,
-    `Requested example slot: ${requestedDates}`,
+    `Requested date and time: ${formatRequestedSlotLabel(requestedDates)}`,
     `Notes: ${requestNotes || "None provided"}`,
     "",
     "This is a request only. Please review and reply directly to the guest.",
