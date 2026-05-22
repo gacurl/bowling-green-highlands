@@ -89,6 +89,14 @@ export default async function AdminPage() {
                     <dd>{requestListItem.requestNotes || "None provided"}</dd>
                   </div>
                 </dl>
+                <div className="mt-4">
+                  <Link
+                    href={`/admin/requests/${requestListItem.id}`}
+                    className="text-sm font-medium text-zinc-900 underline underline-offset-2 hover:text-zinc-700"
+                  >
+                    View request
+                  </Link>
+                </div>
               </article>
             ))}
           </div>
