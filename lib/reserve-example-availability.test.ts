@@ -70,3 +70,19 @@ test("rejects example slot values when the example date is blocked", async () =>
     );
   });
 });
+
+test("rejects malformed slot value formats", async () => {
+  await withAvailabilityStore(async (storePath) => {
+    await setOperatorDateAvailability(RESERVE_EXAMPLE_DATE, "available", storePath);
+
+    assert.equal(
+      await isReserveExampleSlotValue(`${RESERVE_EXAMPLE_DATE} 9:00 to 09:30`),
+      false,
+    );
+    assert.equal(
+      await isReserveExampleSlotValue(`${RESERVE_EXAMPLE_DATE}T09:00 to 09:30`),
+      false,
+    );
+    assert.equal(await isReserveExampleSlotValue("bad-value"), false);
+  });
+});

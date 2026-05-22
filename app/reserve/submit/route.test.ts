@@ -257,6 +257,53 @@ test(
 );
 
 test(
+  "stale options are rejected if operator availability changes before submit",
+  withAvailabilityStore(
+    withEnvironment(async () => {
+      await setOperatorDateAvailability(RESERVE_EXAMPLE_DATE, "available");
+      const publicSlots = await getReserveExampleSlots();
+      const publicOption = publicSlots.find((slot) => slot.status === "available");
+
+      assert.ok(publicOption);
+
+      await setOperatorDateAvailability(RESERVE_EXAMPLE_DATE, "unavailable");
+
+      const sentEmails: SentEmail[] = [];
+      mockEmailTransport(sentEmails);
+      const requestedDates = `${publicOption.date} ${publicOption.startTime} to ${publicOption.endTime}`;
+      const response = await POST(createReservationRequest({ requestedDates }));
+
+      assert.equal(response.status, 303);
+      assert.equal(readRedirectPath(response), "/reserve?error=1");
+      assert.equal(response.headers.get("set-cookie"), null);
+      assert.equal(sentEmails.length, 0);
+    }),
+  ),
+);
+
+test(
+  "malformed requested slot format is rejected",
+  withAvailabilityStore(
+    withEnvironment(async () => {
+      await setOperatorDateAvailability(RESERVE_EXAMPLE_DATE, "available");
+
+      const sentEmails: SentEmail[] = [];
+      mockEmailTransport(sentEmails);
+      const response = await POST(
+        createReservationRequest({
+          requestedDates: "2026-06-14 9:00 to 09:30",
+        }),
+      );
+
+      assert.equal(response.status, 303);
+      assert.equal(readRedirectPath(response), "/reserve?error=1");
+      assert.equal(response.headers.get("set-cookie"), null);
+      assert.equal(sentEmails.length, 0);
+    }),
+  ),
+);
+
+test(
   "invalid submission payloads fail safely",
   withAvailabilityStore(
     withEnvironment(async () => {
