@@ -17,11 +17,10 @@ async function createStorePath() {
   return path.join(directory, "operator-availability.json");
 }
 
-test("loads default blocked dates when no store exists", async () => {
+test("returns empty operator availability when no store exists", async () => {
   const availability = await readOperatorAvailability(await createStorePath());
 
-  assert.equal(isDateUnavailable(availability, "2026-04-10"), true);
-  assert.equal(isDateAvailable(availability, "2026-06-14"), true);
+  assert.deepEqual(availability, {});
 });
 
 test("treats unconfigured dates as unavailable by default", () => {

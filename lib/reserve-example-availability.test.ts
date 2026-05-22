@@ -40,6 +40,22 @@ test("returns no public slots when the example date is blocked", async () => {
   });
 });
 
+test("returns no public slots when the example date is unconfigured", async () => {
+  await withAvailabilityStore(async () => {
+    assert.deepEqual(await getReserveExampleSlots(), []);
+  });
+});
+
+test("returns public slots only after operator opens the example date", async () => {
+  await withAvailabilityStore(async (storePath) => {
+    await setOperatorDateAvailability(RESERVE_EXAMPLE_DATE, "available", storePath);
+
+    const slots = await getReserveExampleSlots();
+
+    assert.ok(slots.some((slot) => slot.status === "available"));
+  });
+});
+
 test("rejects example slot values when the example date is blocked", async () => {
   await withAvailabilityStore(async (storePath) => {
     await setOperatorDateAvailability(
