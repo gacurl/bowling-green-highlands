@@ -3,6 +3,7 @@ import {
   RESERVE_EXAMPLE_END_TIME,
   RESERVE_EXAMPLE_START_TIME,
 } from "../../lib/reserve-example-availability";
+import { formatRequestedSlotValue } from "../../lib/requested-slot";
 import { EVENT_TYPE_OPTIONS } from "../lib/event-type";
 import { PageShell } from "../components/page-shell";
 
@@ -101,7 +102,7 @@ export default async function ReservePage({ searchParams }: ReservePageProps) {
                       </legend>
                       {dateSlots.map((slot) => {
                         const isUnavailable = slot.status === "unavailable";
-                        const slotValue = `${slot.date} ${slot.startTime} to ${slot.endTime}`;
+                        const slotValue = formatRequestedSlotValue(slot);
 
                         if (isUnavailable) {
                           return (

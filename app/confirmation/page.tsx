@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { cookies } from "next/headers";
+import { formatRequestedSlotLabel } from "../../lib/requested-slot";
 import { PageShell } from "../components/page-shell";
 import { getEventTypeLabel } from "../lib/event-type";
 import {
@@ -62,10 +63,8 @@ export default async function ConfirmationPage() {
               <dd>{getEventTypeLabel(confirmationState.eventType)}</dd>
             </div>
             <div>
-              <dt className="font-medium text-zinc-900">
-                Requested example slot
-              </dt>
-              <dd>{confirmationState.requestedDates}</dd>
+              <dt className="font-medium text-zinc-900">Requested date and time</dt>
+              <dd>{formatRequestedSlotLabel(confirmationState.requestedDates)}</dd>
             </div>
             <div>
               <dt className="font-medium text-zinc-900">Notes</dt>
