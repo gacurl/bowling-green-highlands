@@ -40,6 +40,7 @@ It is NOT:
 Reservations are requests until explicitly accepted by the operator.
 
 The system must never imply automatic booking confirmation unless true.
+No payment or submit action may be treated as booking confirmation.
 
 ---
 
@@ -48,6 +49,7 @@ The system must never imply automatic booking confirmation unless true.
 Operator-controlled availability is the source of truth.
 
 Public availability must always derive from operator availability state.
+Unconfigured dates are unavailable by default.
 
 ---
 
@@ -59,20 +61,11 @@ Public users must never be able to request blocked dates.
 
 ---
 
-## Accepted reservations remove availability
+## Availability truth stays explicit
 
-Once a reservation is accepted:
+Availability state must be explicit and operator-owned.
 
-- the date becomes unavailable publicly
-- conflicting reservations must be prevented
-
----
-
-## Payment never bypasses availability truth
-
-Payment must never create reservation state that violates availability integrity.
-
-Availability truth comes before payment logic.
+The UI and backend must never infer hidden availability from unrelated actions.
 
 ---
 
@@ -82,10 +75,11 @@ The MVP uses day-level availability only.
 
 The system intentionally avoids:
 
-- partial-day reservations
+- automatic slot-generation workflows
 - recurring scheduling
 - drag-and-drop calendars
 - advanced scheduling rules
+- booking-platform behavior that increases operator complexity
 
 ---
 
@@ -146,6 +140,7 @@ Avoid:
 - misleading confirmation states
 - unsupported workflow implications
 - placeholder operational language in production flows
+- auto-booking behavior when the system is request-based
 
 ---
 
@@ -173,6 +168,7 @@ Avoid:
 Public availability, operator availability, and reservation integrity must derive from shared system truth.
 
 Avoid duplicated availability logic.
+Do not split truth between frontend assumptions and backend persistence.
 
 ---
 
