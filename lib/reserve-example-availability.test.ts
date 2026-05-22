@@ -56,6 +56,19 @@ test("returns public slots only after operator opens the example date", async ()
   });
 });
 
+test("returns slots for multiple available dates", async () => {
+  await withAvailabilityStore(async (storePath) => {
+    await setOperatorDateAvailability("2026-06-14", "available", storePath);
+    await setOperatorDateAvailability("2026-06-15", "available", storePath);
+
+    const slots = await getReserveExampleSlots();
+    const dates = Array.from(new Set(slots.map((slot) => slot.date)));
+
+    assert.deepEqual(dates, ["2026-06-14", "2026-06-15"]);
+    assert.ok(slots.some((slot) => slot.status === "available"));
+  });
+});
+
 test("rejects example slot values when the example date is blocked", async () => {
   await withAvailabilityStore(async (storePath) => {
     await setOperatorDateAvailability(

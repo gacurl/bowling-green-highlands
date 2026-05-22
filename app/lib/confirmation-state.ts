@@ -6,6 +6,7 @@ export const CONFIRMATION_COOKIE_MAX_AGE_SECONDS = 5 * 60;
 
 export type ConfirmationState = {
   contactEmail: string;
+  eventType: string;
   guestEmail: string;
   guestName: string;
   requestedDates: string;
@@ -20,6 +21,7 @@ function normalizeConfirmationState(
   value: Record<string, unknown>,
 ): ConfirmationState | null {
   const contactEmail = readString(value.contactEmail);
+  const eventType = readString(value.eventType);
   const guestEmail = readString(value.guestEmail);
   const guestName = readString(value.guestName);
   const requestedDates = readString(value.requestedDates);
@@ -31,6 +33,7 @@ function normalizeConfirmationState(
 
   return {
     contactEmail,
+    eventType,
     guestEmail,
     guestName,
     requestedDates,

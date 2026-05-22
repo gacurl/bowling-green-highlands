@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { isReserveExampleSlotValue } from "../../../lib/reserve-example-availability";
+import { normalizeEventType } from "../../lib/event-type";
 import {
   CONFIRMATION_COOKIE_MAX_AGE_SECONDS,
   CONFIRMATION_COOKIE_NAME,
@@ -8,6 +9,8 @@ import {
 import { sendReservationRequestEmail } from "../../lib/reservation-email";
 
 const BASIC_EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const VALIDATION_ERROR_QUERY = "/reserve?error=validation";
+const DELIVERY_ERROR_QUERY = "/reserve?error=delivery";
 
 function readRequiredString(formData: FormData, key: string) {
   const value = formData.get(key);
@@ -45,6 +48,7 @@ export async function POST(request: Request) {
   try {
     const guestName = readRequiredString(formData, "guestName");
     const guestEmail = readRequiredString(formData, "guestEmail");
+    const eventType = readRequiredString(formData, "eventType");
     const requestedDates = readRequiredString(formData, "requestedDates");
     const requestNotes = readOptionalString(formData, "requestNotes");
 
@@ -56,12 +60,29 @@ export async function POST(request: Request) {
       throw new Error("Invalid requested slot");
     }
 
-    const { contactEmail } = await sendReservationRequestEmail({
-      guestEmail,
-      guestName,
-      requestNotes,
-      requestedDates,
-    });
+    const normalizedEventType = normalizeEventType(eventType);
+
+    if (!normalizedEventType) {
+      throw new Error("Invalid event type");
+    }
+
+    let contactEmail: string;
+
+    try {
+      const emailResult = await sendReservationRequestEmail({
+        eventType: normalizedEventType,
+        guestEmail,
+        guestName,
+        requestNotes,
+        requestedDates,
+      });
+      contactEmail = emailResult.contactEmail;
+    } catch {
+      return NextResponse.redirect(
+        new URL(DELIVERY_ERROR_QUERY, request.url),
+        { status: 303 },
+      );
+    }
 
     const response = NextResponse.redirect(
       new URL("/confirmation", request.url),
@@ -73,6 +94,7 @@ export async function POST(request: Request) {
       createConfirmationStateCookieValue(
         {
           contactEmail,
+          eventType: normalizedEventType,
           guestEmail,
           guestName,
           requestedDates,
@@ -91,8 +113,11 @@ export async function POST(request: Request) {
 
     return response;
   } catch {
-    return NextResponse.redirect(new URL("/reserve?error=1", request.url), {
-      status: 303,
-    });
+    return NextResponse.redirect(
+      new URL(VALIDATION_ERROR_QUERY, request.url),
+      {
+        status: 303,
+      },
+    );
   }
 }

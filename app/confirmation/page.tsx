@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { cookies } from "next/headers";
 import { PageShell } from "../components/page-shell";
+import { getEventTypeLabel } from "../lib/event-type";
 import {
   CONFIRMATION_COOKIE_NAME,
   readConfirmationStateCookieValue,
@@ -55,6 +56,10 @@ export default async function ConfirmationPage() {
             <div>
               <dt className="font-medium text-zinc-900">Email</dt>
               <dd>{confirmationState.guestEmail}</dd>
+            </div>
+            <div>
+              <dt className="font-medium text-zinc-900">Event type</dt>
+              <dd>{getEventTypeLabel(confirmationState.eventType)}</dd>
             </div>
             <div>
               <dt className="font-medium text-zinc-900">

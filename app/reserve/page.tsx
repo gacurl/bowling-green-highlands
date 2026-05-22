@@ -1,9 +1,9 @@
 import {
   getReserveExampleSlots,
-  RESERVE_EXAMPLE_DATE_LABEL,
   RESERVE_EXAMPLE_END_TIME,
   RESERVE_EXAMPLE_START_TIME,
 } from "../../lib/reserve-example-availability";
+import { EVENT_TYPE_OPTIONS } from "../lib/event-type";
 import { PageShell } from "../components/page-shell";
 
 type ReservePageProps = {
@@ -14,11 +14,36 @@ type ReservePageProps = {
 
 export default async function ReservePage({ searchParams }: ReservePageProps) {
   const params = await searchParams;
-  const hasError = params.error === "1";
+  const hasValidationError = params.error === "validation";
+  const hasDeliveryError = params.error === "delivery";
   const availableSlots = await getReserveExampleSlots();
   const hasSelectableSlots = availableSlots.some(
     (slot) => slot.status === "available",
   );
+  const slotsByDate = availableSlots.reduce<Record<string, typeof availableSlots>>(
+    (slotsByDateMap, slot) => {
+      if (!slotsByDateMap[slot.date]) {
+        slotsByDateMap[slot.date] = [];
+      }
+
+      slotsByDateMap[slot.date].push(slot);
+
+      return slotsByDateMap;
+    },
+    {},
+  );
+  const slotDates = Object.keys(slotsByDate).sort((firstDate, secondDate) =>
+    firstDate.localeCompare(secondDate),
+  );
+
+  function formatDateLabel(date: string) {
+    return new Intl.DateTimeFormat("en-US", {
+      month: "long",
+      day: "numeric",
+      weekday: "long",
+      year: "numeric",
+    }).format(new Date(`${date}T00:00:00`));
+  }
 
   return (
     <PageShell
@@ -33,10 +58,16 @@ export default async function ReservePage({ searchParams }: ReservePageProps) {
       }
     >
       <div className="space-y-4">
-        {hasError ? (
+        {hasValidationError ? (
           <p className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
             The request could not be sent. Check your name, email, and
             selected time, then try again.
+          </p>
+        ) : null}
+        {hasDeliveryError ? (
+          <p className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            The request could not be forwarded right now. Please try again in a
+            moment.
           </p>
         ) : null}
         <form
@@ -47,62 +78,74 @@ export default async function ReservePage({ searchParams }: ReservePageProps) {
           <fieldset className="space-y-4">
             <div className="space-y-1">
               <p className="text-sm font-medium text-zinc-500">
-                Example availability
+                Current availability
               </p>
               <legend className="text-lg font-semibold text-zinc-900">
-                Choose a time
+                Choose a date and time
               </legend>
               <p className="text-sm text-zinc-600">
-                {RESERVE_EXAMPLE_DATE_LABEL} from {RESERVE_EXAMPLE_START_TIME}{" "}
-                to {RESERVE_EXAMPLE_END_TIME}
+                Available request times are shown for operator-open dates.
+                Standard time window: {RESERVE_EXAMPLE_START_TIME} to{" "}
+                {RESERVE_EXAMPLE_END_TIME}.
               </p>
             </div>
             <div className="space-y-3">
               {hasSelectableSlots ? (
-                availableSlots.map((slot) => {
-                  const isUnavailable = slot.status === "unavailable";
-                  const slotValue = `${slot.date} ${slot.startTime} to ${slot.endTime}`;
-
-                  if (isUnavailable) {
-                    return (
-                      <div
-                        key={`${slot.date}-${slot.startTime}-${slot.endTime}`}
-                        className="flex items-center justify-between rounded-2xl border border-zinc-200 bg-zinc-100 px-4 py-3 text-sm text-zinc-500"
-                        aria-disabled="true"
-                      >
-                        <span className="font-medium">
-                          {slot.startTime} to {slot.endTime}
-                        </span>
-                        <span>Unavailable</span>
-                      </div>
-                    );
-                  }
+                slotDates.map((date) => {
+                  const dateSlots = slotsByDate[date] ?? [];
 
                   return (
-                    <label
-                      key={`${slot.date}-${slot.startTime}-${slot.endTime}`}
-                      className="flex cursor-pointer items-center justify-between rounded-2xl border border-zinc-300 bg-white px-4 py-3 text-sm text-zinc-900 transition hover:border-zinc-500 has-[:checked]:border-zinc-900 has-[:checked]:bg-zinc-50"
-                    >
-                      <span className="flex items-center gap-3">
-                        <input
-                          type="radio"
-                          name="requestedDates"
-                          value={slotValue}
-                          required
-                          className="h-4 w-4 border-zinc-300 text-zinc-900 focus:ring-zinc-500"
-                        />
-                        <span className="font-medium">
-                          {slot.startTime} to {slot.endTime}
-                        </span>
-                      </span>
-                      <span>Available</span>
-                    </label>
+                    <fieldset key={date} className="space-y-2">
+                      <legend className="text-sm font-medium text-zinc-700">
+                        {formatDateLabel(date)}
+                      </legend>
+                      {dateSlots.map((slot) => {
+                        const isUnavailable = slot.status === "unavailable";
+                        const slotValue = `${slot.date} ${slot.startTime} to ${slot.endTime}`;
+
+                        if (isUnavailable) {
+                          return (
+                            <div
+                              key={`${slot.date}-${slot.startTime}-${slot.endTime}`}
+                              className="flex items-center justify-between rounded-2xl border border-zinc-200 bg-zinc-100 px-4 py-3 text-sm text-zinc-500"
+                              aria-disabled="true"
+                            >
+                              <span className="font-medium">
+                                {slot.startTime} to {slot.endTime}
+                              </span>
+                              <span>Unavailable</span>
+                            </div>
+                          );
+                        }
+
+                        return (
+                          <label
+                            key={`${slot.date}-${slot.startTime}-${slot.endTime}`}
+                            className="flex cursor-pointer items-center justify-between rounded-2xl border border-zinc-300 bg-white px-4 py-3 text-sm text-zinc-900 transition hover:border-zinc-500 has-[:checked]:border-zinc-900 has-[:checked]:bg-zinc-50"
+                          >
+                            <span className="flex items-center gap-3">
+                              <input
+                                type="radio"
+                                name="requestedDates"
+                                value={slotValue}
+                                required
+                                className="h-4 w-4 border-zinc-300 text-zinc-900 focus:ring-zinc-500"
+                              />
+                              <span className="font-medium">
+                                {slot.startTime} to {slot.endTime}
+                              </span>
+                            </span>
+                            <span>Available</span>
+                          </label>
+                        );
+                      })}
+                    </fieldset>
                   );
                 })
               ) : (
                 <p className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600">
-                  No availability for this day. Please choose another date or
-                  contact us.
+                  No dates are currently available to request. Please contact
+                  us.
                 </p>
               )}
             </div>
@@ -169,10 +212,11 @@ export default async function ReservePage({ searchParams }: ReservePageProps) {
               <option value="" disabled>
                 Select an event type
               </option>
-              <option value="farm stay">Farm stay</option>
-              <option value="wedding">Wedding</option>
-              <option value="retreat">Retreat</option>
-              <option value="other">Other</option>
+              {EVENT_TYPE_OPTIONS.map((eventType) => (
+                <option key={eventType.value} value={eventType.value}>
+                  {eventType.label}
+                </option>
+              ))}
             </select>
           </div>
           <div className="space-y-2">
