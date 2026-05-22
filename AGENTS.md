@@ -46,43 +46,26 @@ It is NOT:
 The current system is request-based:
 - guests submit a reservation request
 - the app forwards the request by email to the operator
-- no slot selection exists yet
+- operators manage day-level availability
+- unavailable dates cannot be requested
+- unconfigured dates are unavailable by default
 - no real booking is confirmed by the system
 
-## Target Direction
-
-The target MVP is slot-based:
-- operators define availability windows
-- system generates time slots automatically
-- users select and reserve a time slot
-- slots cannot be double-booked
-- confirmation reflects the real reservation state
-
-Target slot structure:
-- `date`: `YYYY-MM-DD`
-- `startTime`: `HH:mm`
-- `endTime`: `HH:mm`
-- `status`: `available | reserved | unavailable`
+No payments are live.
+No auto-booking is live.
+No scheduling suite behavior is in scope.
 
 ---
 
 ## Core Model
 
 Current model:
-- user submits a requested date for operator review
+- operator sets day availability as available or unavailable
+- public availability is derived from operator availability
+- users can only request dates that are currently available
+- user submits a reservation request for operator review
 - operator follows up outside the app
-
-Target model:
-Operators:
-- choose a date
-- define available time window
-- system generates slots using a fixed duration
-- optionally close specific slots
-
-Users:
-- see available slots
-- select one slot
-- complete reservation
+- request submission is not booking confirmation
 
 If this model breaks, the feature is invalid.
 
@@ -138,20 +121,15 @@ Fail = not ready.
 ## Scheduling Constraints
 
 Current-state rule:
-- treat the product as request-based until slot behavior is actually implemented
-
-Target-state rule:
-- slots are auto-generated
-- fixed slot duration (default 30 minutes unless ticketed otherwise)
-- slot duration may be configurable globally for MVP
-- slots must not overlap
-- slots must not exceed the defined availability window
-- malformed slot engine input must fail safely
-- partial trailing time must not create a slot
+- treat the product as request-based with day-level availability truth
+- operators are the availability source of truth
+- unavailable dates cannot be requested
+- unconfigured dates are unavailable by default
+- no auto-booking
+- no payment assumptions
 - no recurrence rules
 - no drag/drop scheduling
-- no complex calendar interactions
-- no explanation-heavy controls
+- no complex booking-platform interactions
 
 Keep scheduling simple and fast.
 
