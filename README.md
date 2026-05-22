@@ -17,6 +17,8 @@ Right now the application supports a simple public flow:
 
 `landing -> reserve -> confirmation`
 
+Milestone 2 status: complete.
+
 What it does today:
 - guests can open the public landing page
 - guests can submit a reservation request from `/reserve`
@@ -63,142 +65,18 @@ Practical note:
 
 ## Planned Direction
 
-The target system direction is slot-based:
-- operators define availability windows
-- the system auto-generates time slots
-- slot duration defaults to 30 minutes unless ticketed otherwise
-- users select one available slot
-- reserved slots cannot be double-booked
+Near-term direction (Milestone 3):
+- keep reservation flow request-based
+- preserve operator-controlled day-level availability truth
+- expand public availability presentation beyond the current fixed example-day context
+- keep the operator workflow simple and low-cognitive-load
 
-This direction is not implemented yet. Until it is implemented, the live system
-remains request-based and email-driven.
-
-## Target Slot Model
-
-This section defines the authoritative target slot-based model for MVP. It is a
-specification for future implementation, not a description of current behavior.
-
-### Slot Structure
-
-Each slot has:
-- `date`: `YYYY-MM-DD`
-- `startTime`: `HH:mm`
-- `endTime`: `HH:mm`
-- `status`: `available | reserved | unavailable`
-
-### Slot Generation
-
-For a given date:
-- the operator defines a start time and end time
-- the system generates slots automatically inside that availability window
-- default slot duration is 30 minutes
-- slot duration is configurable globally for MVP
-- slots must not overlap
-- slots must not extend past the operator-defined end time
-
-### Slot Engine Requirements
-
-This section defines the target slot engine contract for MVP. It is not live
-behavior yet.
-
-#### Engine Inputs
-
-The engine takes:
-- `date`: `YYYY-MM-DD`
-- `startTime`: `HH:mm`
-- `endTime`: `HH:mm`
-- `slotDurationMinutes`: whole number of minutes
-
-#### Engine Output
-
-The engine returns:
-- an ordered list of slot objects
-
-Each slot object includes:
-- `date`
-- `startTime`
-- `endTime`
-- `status`
-
-Newly generated slots default to:
-- `status: available`
-
-#### Generation Rules
-
-- slots are generated sequentially from `startTime` toward `endTime`
-- each slot uses the same slot duration
-- no slot may extend past `endTime`
-- no slots may overlap
-- output order must always be deterministic
-- partial trailing time that cannot fit a full slot does not create a slot
-
-#### Validation And Boundary Rules
-
-- `startTime` must be earlier than `endTime`
-- malformed `date` input is invalid
-- malformed time input is invalid
-- zero-length windows are invalid
-- negative windows are invalid
-- invalid input must fail safely
-
-For MVP, fail safely means:
-- return an empty array (`[]`)
-- do not generate partial or guessed slots
-
-#### Format Standards
-
-- `date` format is `YYYY-MM-DD`
-- time format is `HH:mm`
-- time handling stays simple
-- no timezone logic is part of the engine
-
-#### MVP Constraints
-
-The slot engine does not include:
-- recurrence
-- multi-day windows
-- drag/drop scheduling
-- advanced calendar behavior
-- persistence decisions
-
-### Reservation Rules
-
-Target reservation behavior:
-- one reservation per slot
-- a reserved slot is no longer selectable
-- slots cannot be double-booked
-- confirmation should reflect the actual reservation state
-
-Current implementation note:
-- the live app does not implement slot reservations yet
-- the live app is still request-based and email-driven
-
-### Operator Workflow
-
-Target operator workflow:
-- operator selects a date
-- operator defines start and end availability
-- system generates slots automatically
-- operator may mark specific slots unavailable if needed
-- workflow should stay simple and low-click
-
-### Public User Workflow
-
-Target public workflow:
-- user visits the reserve page
-- user sees available slots
-- user selects one slot
-- user submits the reservation
-- confirmation reflects the actual reservation state
-
-### Non-Goals For MVP
-
-The target slot model does not include:
-- recurring rules
-- drag/drop calendar behavior
-- complex scheduling tools
-- payment workflow details
-- advanced booking engine behavior
+Out of scope for Milestone 3:
+- payments
+- auto-booking
+- recurring scheduling
+- drag/drop calendars
+- booking-platform behavior
 
 ## Local Setup
 
