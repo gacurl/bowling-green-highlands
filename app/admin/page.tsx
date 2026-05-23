@@ -2,6 +2,10 @@ import Link from "next/link";
 import { readOperatorAvailability } from "../../lib/operator-availability";
 import { readReservationRequests } from "../lib/reservation-requests";
 import { toReservationRequestListItems } from "../lib/reservation-request-list";
+import {
+  getReservationRequestStatusBadgeClass,
+  getReservationRequestStatusLabel,
+} from "../lib/reservation-request-status";
 import { MonthCalendar } from "./month-calendar";
 import { PageShell } from "../components/page-shell";
 
@@ -65,6 +69,16 @@ export default async function AdminPage() {
                   <div>
                     <dt className="font-medium text-zinc-900">Submitted</dt>
                     <dd>{requestListItem.createdAtLabel}</dd>
+                  </div>
+                  <div>
+                    <dt className="font-medium text-zinc-900">Status</dt>
+                    <dd>
+                      <span
+                        className={`inline-flex rounded-full border px-3 py-1 text-xs font-medium ${getReservationRequestStatusBadgeClass(requestListItem.status)}`}
+                      >
+                        {getReservationRequestStatusLabel(requestListItem.status)}
+                      </span>
+                    </dd>
                   </div>
                   <div>
                     <dt className="font-medium text-zinc-900">Name</dt>
