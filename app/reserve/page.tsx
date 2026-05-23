@@ -7,6 +7,8 @@ import { formatRequestedSlotValue } from "../../lib/requested-slot";
 import { EVENT_TYPE_OPTIONS } from "../lib/event-type";
 import { PageShell } from "../components/page-shell";
 
+export const dynamic = "force-dynamic";
+
 type ReservePageProps = {
   searchParams: Promise<{
     error?: string;
