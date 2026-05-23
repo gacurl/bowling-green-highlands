@@ -2,6 +2,10 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { PageShell } from "../../../components/page-shell";
 import { toReservationRequestDetailItem } from "../../../lib/reservation-request-detail";
+import {
+  getReservationRequestStatusBadgeClass,
+  getReservationRequestStatusLabel,
+} from "../../../lib/reservation-request-status";
 import { readReservationRequests } from "../../../lib/reservation-requests";
 
 type RequestDetailPageProps = {
@@ -48,7 +52,13 @@ export default async function RequestDetailPage({
           </div>
           <div>
             <dt className="font-medium text-zinc-900">Status</dt>
-            <dd className="capitalize">{requestDetail.status}</dd>
+            <dd>
+              <span
+                className={`inline-flex rounded-full border px-3 py-1 text-xs font-medium ${getReservationRequestStatusBadgeClass(requestDetail.status)}`}
+              >
+                {getReservationRequestStatusLabel(requestDetail.status)}
+              </span>
+            </dd>
           </div>
           <div>
             <dt className="font-medium text-zinc-900">Name</dt>
