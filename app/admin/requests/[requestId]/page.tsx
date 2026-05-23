@@ -85,6 +85,11 @@ export default async function RequestDetailPage({
             This request status is already set.
           </p>
         ) : null}
+        {error === "slot_conflict" ? (
+          <p className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            Another request is already accepted for this slot.
+          </p>
+        ) : null}
         {requestDetail.status === "pending" ? (
           <form
             action={`/admin/requests/${requestDetail.id}/status`}
