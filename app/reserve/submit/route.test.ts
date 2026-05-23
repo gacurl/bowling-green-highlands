@@ -13,7 +13,10 @@ import {
   getReserveExampleSlots,
   RESERVE_EXAMPLE_DATE,
 } from "../../../lib/reserve-example-availability";
-import { readReservationRequests } from "../../lib/reservation-requests";
+import {
+  readReservationRequests,
+  updateReservationRequestStatus,
+} from "../../lib/reservation-requests";
 import { setOperatorDateAvailability } from "../../../lib/operator-availability";
 
 type SentEmail = {
@@ -379,6 +382,47 @@ test(
       assert.equal(response.headers.get("set-cookie"), null);
       assert.equal(sentEmails.length, 0);
       assert.deepEqual(await readReservationRequests(), []);
+    }),
+  ),
+);
+
+test(
+  "stale options are rejected if the slot is accepted before submit",
+  withAvailabilityStore(
+    withEnvironment(async () => {
+      await setOperatorDateAvailability(RESERVE_EXAMPLE_DATE, "available");
+      const publicSlots = await getReserveExampleSlots();
+      const publicOption = publicSlots.find((slot) => slot.status === "available");
+
+      assert.ok(publicOption);
+
+      const acceptedSeedResponse = await POST(
+        createReservationRequest({
+          guestEmail: "seed@example.com",
+          requestedDates: `${publicOption.date} ${publicOption.startTime} to ${publicOption.endTime}`,
+        }),
+      );
+      assert.equal(acceptedSeedResponse.status, 303);
+      const seededRequests = await readReservationRequests();
+      assert.equal(seededRequests.length, 1);
+      assert.equal(
+        await updateReservationRequestStatus(seededRequests[0].id, "accepted"),
+        "updated",
+      );
+
+      const sentEmails: SentEmail[] = [];
+      mockEmailTransport(sentEmails);
+      const staleSubmitResponse = await POST(
+        createReservationRequest({
+          requestedDates: `${publicOption.date} ${publicOption.startTime} to ${publicOption.endTime}`,
+        }),
+      );
+
+      assert.equal(staleSubmitResponse.status, 303);
+      assert.equal(readRedirectPath(staleSubmitResponse), "/reserve?error=validation");
+      assert.equal(staleSubmitResponse.headers.get("set-cookie"), null);
+      assert.equal(sentEmails.length, 0);
+      assert.equal((await readReservationRequests()).length, 1);
     }),
   ),
 );
