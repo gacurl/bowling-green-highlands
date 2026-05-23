@@ -302,3 +302,123 @@ test("updates only one record when duplicate request ids exist", async () => {
   assert.equal(acceptedCount, 1);
   assert.equal(reservationRequests[1].status, "pending");
 });
+
+test("blocks accepting a second pending request for the same requested slot", async () => {
+  const storePath = await createStorePath();
+  const firstRequest = await createReservationRequestRecord(
+    {
+      eventType: "farm_stay",
+      guestEmail: "first@example.com",
+      guestName: "First Guest",
+      requestNotes: "",
+      requestedDates: "2026-07-01 09:00 to 09:30",
+    },
+    storePath,
+  );
+  const secondRequest = await createReservationRequestRecord(
+    {
+      eventType: "retreat",
+      guestEmail: "second@example.com",
+      guestName: "Second Guest",
+      requestNotes: "",
+      requestedDates: "2026-07-01 09:00 to 09:30",
+    },
+    storePath,
+  );
+
+  assert.equal(
+    await updateReservationRequestStatus(firstRequest.id, "accepted", storePath),
+    "updated",
+  );
+  assert.equal(
+    await updateReservationRequestStatus(secondRequest.id, "accepted", storePath),
+    "slot_conflict",
+  );
+
+  const reservationRequests = await readReservationRequests(storePath);
+  const acceptedRequest = reservationRequests.find(
+    (requestRecord) => requestRecord.id === firstRequest.id,
+  );
+  const blockedRequest = reservationRequests.find(
+    (requestRecord) => requestRecord.id === secondRequest.id,
+  );
+
+  assert.ok(acceptedRequest);
+  assert.ok(blockedRequest);
+  assert.equal(acceptedRequest.status, "accepted");
+  assert.equal(blockedRequest.status, "pending");
+});
+
+test("accepting a pending request with a different slot still succeeds", async () => {
+  const storePath = await createStorePath();
+  const firstRequest = await createReservationRequestRecord(
+    {
+      eventType: "farm_stay",
+      guestEmail: "first@example.com",
+      guestName: "First Guest",
+      requestNotes: "",
+      requestedDates: "2026-07-02 09:00 to 09:30",
+    },
+    storePath,
+  );
+  const secondRequest = await createReservationRequestRecord(
+    {
+      eventType: "retreat",
+      guestEmail: "second@example.com",
+      guestName: "Second Guest",
+      requestNotes: "",
+      requestedDates: "2026-07-03 09:00 to 09:30",
+    },
+    storePath,
+  );
+
+  assert.equal(
+    await updateReservationRequestStatus(firstRequest.id, "accepted", storePath),
+    "updated",
+  );
+  assert.equal(
+    await updateReservationRequestStatus(secondRequest.id, "accepted", storePath),
+    "updated",
+  );
+});
+
+test("declining still works when another request for the same slot is accepted", async () => {
+  const storePath = await createStorePath();
+  const acceptedRequest = await createReservationRequestRecord(
+    {
+      eventType: "farm_stay",
+      guestEmail: "accepted@example.com",
+      guestName: "Accepted Guest",
+      requestNotes: "",
+      requestedDates: "2026-07-04 09:00 to 09:30",
+    },
+    storePath,
+  );
+  const declinedRequest = await createReservationRequestRecord(
+    {
+      eventType: "retreat",
+      guestEmail: "declined@example.com",
+      guestName: "Declined Guest",
+      requestNotes: "",
+      requestedDates: "2026-07-04 09:00 to 09:30",
+    },
+    storePath,
+  );
+
+  assert.equal(
+    await updateReservationRequestStatus(acceptedRequest.id, "accepted", storePath),
+    "updated",
+  );
+  assert.equal(
+    await updateReservationRequestStatus(declinedRequest.id, "declined", storePath),
+    "updated",
+  );
+
+  const reservationRequests = await readReservationRequests(storePath);
+  const updatedDeclinedRequest = reservationRequests.find(
+    (requestRecord) => requestRecord.id === declinedRequest.id,
+  );
+
+  assert.ok(updatedDeclinedRequest);
+  assert.equal(updatedDeclinedRequest.status, "declined");
+});

@@ -167,7 +167,7 @@ export async function updateReservationRequestStatus(
   requestId: string,
   status: ReservationRequestStatusUpdate,
   storePath = getReservationRequestStorePath(),
-): Promise<"updated" | "not_found" | "invalid_transition"> {
+): Promise<"updated" | "not_found" | "invalid_transition" | "slot_conflict"> {
   const requests = await readReservationRequests(storePath);
   const request = requests.find((requestRecord) => requestRecord.id === requestId);
 
@@ -177,6 +177,19 @@ export async function updateReservationRequestStatus(
 
   if (request.status !== "pending") {
     return "invalid_transition";
+  }
+
+  if (status === "accepted") {
+    const hasAcceptedSlotConflict = requests.some(
+      (requestRecord) =>
+        requestRecord.id !== requestId &&
+        requestRecord.status === "accepted" &&
+        requestRecord.requestedDates === request.requestedDates,
+    );
+
+    if (hasAcceptedSlotConflict) {
+      return "slot_conflict";
+    }
   }
 
   let statusUpdated = false;

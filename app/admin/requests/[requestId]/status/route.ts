@@ -31,5 +31,9 @@ export async function POST(request: Request, { params }: StatusRouteProps) {
     redirect(`/admin/requests/${requestId}?error=invalid_transition`);
   }
 
+  if (updateResult === "slot_conflict") {
+    redirect(`/admin/requests/${requestId}?error=slot_conflict`);
+  }
+
   redirect(`/admin/requests/${requestId}`);
 }
