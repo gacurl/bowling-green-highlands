@@ -18,13 +18,13 @@ export function PageShell({
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col justify-center gap-8 px-6 py-16">
       <div className="space-y-4">
-        <p className="text-sm font-medium uppercase tracking-[0.2em] text-zinc-500">
+        <p className="text-sm font-medium uppercase tracking-[0.2em] text-[#E5BA41]">
           {eyebrow}
         </p>
-        <h1 className="text-4xl font-semibold tracking-tight text-zinc-900">
+        <h1 className="text-4xl font-semibold tracking-tight text-slate-50">
           {title}
         </h1>
-        <p className="max-w-2xl text-lg leading-8 text-zinc-600">
+        <p className="max-w-2xl text-lg leading-8 text-slate-200">
           {description}
         </p>
       </div>
