@@ -26,10 +26,28 @@ test("returns a friendly request detail item for a known request id", () => {
     "Sunday, June 14, 2026, 09:00 to 09:30",
   );
   assert.equal(requestDetailItem.status, "pending");
+  assert.equal(requestDetailItem.statusUpdatedAtLabel, null);
 });
 
 test("returns null for an unknown request id", () => {
   const requestDetailItem = toReservationRequestDetailItem(requests, "missing-id");
 
   assert.equal(requestDetailItem, null);
+});
+
+test("returns a status-updated label when a timestamp is present", () => {
+  const requestWithStatusUpdate: ReservationRequestRecord = {
+    ...requests[0],
+    id: "updated-id",
+    status: "accepted",
+    statusUpdatedAt: "2026-06-15T12:30:00.000Z",
+  };
+  const requestDetailItem = toReservationRequestDetailItem(
+    [requestWithStatusUpdate],
+    "updated-id",
+  );
+
+  assert.ok(requestDetailItem);
+  assert.equal(requestDetailItem.status, "accepted");
+  assert.ok(requestDetailItem.statusUpdatedAtLabel);
 });

@@ -14,6 +14,7 @@ export type ReservationRequestDetailItem = {
   requestNotes: string;
   requestedSlotLabel: string;
   status: ReservationRequestStatus;
+  statusUpdatedAtLabel: string | null;
 };
 
 export function toReservationRequestDetailItem(
@@ -35,6 +36,9 @@ export function toReservationRequestDetailItem(
     requestNotes: request.requestNotes,
     requestedSlotLabel: formatRequestedSlotLabel(request.requestedDates),
     status: request.status,
+    statusUpdatedAtLabel: request.statusUpdatedAt
+      ? formatCreatedAtLabel(request.statusUpdatedAt)
+      : null,
   };
 }
 
