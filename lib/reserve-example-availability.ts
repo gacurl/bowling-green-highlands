@@ -4,6 +4,7 @@ import {
   parseRequestedSlotValue,
 } from "./requested-slot";
 import { readOperatorAvailability } from "./operator-availability";
+import { readReservationRequests } from "../app/lib/reservation-requests";
 import type { Slot } from "./slots";
 
 export const RESERVE_EXAMPLE_START_TIME = "09:00";
@@ -21,6 +22,11 @@ const EXISTING_RESERVATIONS: Slot[] = [
 
 export async function getReserveExampleSlots() {
   const operatorAvailability = await readOperatorAvailability();
+  const reservationRequests = await readReservationRequests();
+  const acceptedSlots = reservationRequests
+    .filter((requestRecord) => requestRecord.status === "accepted")
+    .map((requestRecord) => parseRequestedSlotValue(requestRecord.requestedDates))
+    .filter((slot): slot is Slot => slot !== null);
   const availableDates = Object.entries(operatorAvailability)
     .filter(([, dayAvailability]) => dayAvailability.mode === "available")
     .map(([date]) => date)
@@ -31,7 +37,7 @@ export async function getReserveExampleSlots() {
       date,
       RESERVE_EXAMPLE_START_TIME,
       RESERVE_EXAMPLE_END_TIME,
-      EXISTING_RESERVATIONS,
+      [...EXISTING_RESERVATIONS, ...acceptedSlots],
       operatorAvailability,
     ),
   );
