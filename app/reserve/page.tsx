@@ -52,11 +52,10 @@ export default async function ReservePage({ searchParams }: ReservePageProps) {
     <PageShell
       eyebrow="Reservation Request"
       title="Check availability, then send a reservation request."
-      description="Current availability is shown below. Submit the form to send your request to the farm operator for review. This does not confirm a booking."
+      description="Pick an available date and time, then send your request. This is not a booking."
       action={
-        <p className="text-sm text-zinc-500">
-          The operator reviews requests after the email is sent. No dates are
-          confirmed automatically.
+        <p className="text-sm text-slate-200">
+          The operator reviews your request and follows up directly.
         </p>
       }
     >
@@ -87,8 +86,7 @@ export default async function ReservePage({ searchParams }: ReservePageProps) {
                 Choose a date and time
               </legend>
               <p className="text-sm text-zinc-600">
-                Available request times are shown for operator-open dates.
-                Standard time window: {RESERVE_EXAMPLE_START_TIME} to{" "}
+                Request times are shown for open dates: {RESERVE_EXAMPLE_START_TIME} to{" "}
                 {RESERVE_EXAMPLE_END_TIME}.
               </p>
             </div>
@@ -241,7 +239,7 @@ export default async function ReservePage({ searchParams }: ReservePageProps) {
             type="submit"
             disabled={!hasSelectableSlots}
             aria-disabled={!hasSelectableSlots}
-            className="inline-flex items-center justify-center rounded-full bg-zinc-900 px-6 py-3 text-sm font-medium text-white transition-colors hover:bg-zinc-700"
+            className="inline-flex items-center justify-center rounded-full bg-[#E5BA41] px-6 py-3 text-sm font-semibold text-[#2D3C59] transition-colors hover:bg-[#D1855C] hover:text-white disabled:bg-zinc-300 disabled:text-zinc-600"
           >
             Submit reservation request
           </button>

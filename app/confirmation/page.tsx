@@ -21,26 +21,26 @@ export default async function ConfirmationPage() {
       eyebrow="Confirmation"
       title={
         hasConfirmedRequest
-          ? "Reservation request submitted for operator review."
+          ? "Request received."
           : "No reservation request submitted yet."
       }
       description={
         hasConfirmedRequest
-          ? "Your request has been forwarded to the farm operator by email. They will review it and follow up directly. This does not confirm a booking."
-          : "Start a reservation request first. After it is sent, this page will confirm that the operator will review it and follow up later."
+          ? "Your request was sent to the operator. It is not booked or confirmed yet."
+          : "Start a reservation request first."
       }
       action={
         hasConfirmedRequest ? (
           <Link
             href="/"
-            className="inline-flex items-center justify-center rounded-full bg-zinc-900 px-6 py-3 text-sm font-medium text-white transition-colors hover:bg-zinc-700"
+            className="inline-flex items-center justify-center rounded-full bg-[#E5BA41] px-6 py-3 text-sm font-semibold text-[#2D3C59] transition-colors hover:bg-[#D1855C] hover:text-white"
           >
             Back to landing
           </Link>
         ) : (
           <Link
             href="/reserve"
-            className="inline-flex items-center justify-center rounded-full bg-zinc-900 px-6 py-3 text-sm font-medium text-white transition-colors hover:bg-zinc-700"
+            className="inline-flex items-center justify-center rounded-full bg-[#E5BA41] px-6 py-3 text-sm font-semibold text-[#2D3C59] transition-colors hover:bg-[#D1855C] hover:text-white"
           >
             Start a reservation request
           </Link>
