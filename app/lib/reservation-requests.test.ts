@@ -76,7 +76,11 @@ test("updates a pending request to accepted", async () => {
   );
 
   assert.equal(updateResult, "updated");
-  assert.equal((await readReservationRequests(storePath))[0].status, "accepted");
+  const updatedRequest = (await readReservationRequests(storePath))[0];
+
+  assert.equal(updatedRequest.status, "accepted");
+  assert.ok(updatedRequest.statusUpdatedAt);
+  assert.ok(!Number.isNaN(Date.parse(updatedRequest.statusUpdatedAt)));
 });
 
 test("updates a pending request to declined", async () => {
@@ -99,7 +103,11 @@ test("updates a pending request to declined", async () => {
   );
 
   assert.equal(updateResult, "updated");
-  assert.equal((await readReservationRequests(storePath))[0].status, "declined");
+  const updatedRequest = (await readReservationRequests(storePath))[0];
+
+  assert.equal(updatedRequest.status, "declined");
+  assert.ok(updatedRequest.statusUpdatedAt);
+  assert.ok(!Number.isNaN(Date.parse(updatedRequest.statusUpdatedAt)));
 });
 
 test("returns not_found for unknown request id updates", async () => {

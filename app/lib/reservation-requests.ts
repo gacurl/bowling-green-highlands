@@ -15,6 +15,7 @@ export type ReservationRequestRecord = {
   requestNotes: string;
   requestedDates: string;
   status: ReservationRequestStatus;
+  statusUpdatedAt?: string;
 };
 
 type ReservationRequestStoreFile = {
@@ -75,6 +76,8 @@ function normalizeReservationRequestRecord(
     requestNotes: record.requestNotes,
     requestedDates: record.requestedDates,
     status: record.status,
+    statusUpdatedAt:
+      typeof record.statusUpdatedAt === "string" ? record.statusUpdatedAt : undefined,
   };
 }
 
@@ -203,6 +206,7 @@ export async function updateReservationRequestStatus(
     return {
       ...requestRecord,
       status,
+      statusUpdatedAt: new Date().toISOString(),
     };
   });
 
