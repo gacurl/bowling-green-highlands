@@ -2,6 +2,7 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {
   defaultHomepageContent,
+  type HomepageFaqItem,
   type HomepageContent,
 } from "./homepage-content";
 
@@ -11,6 +12,7 @@ type HomepageContentStoreFile = {
   supportingText?: unknown;
   primaryCtaHref?: unknown;
   primaryCtaLabel?: unknown;
+  faqs?: unknown;
 };
 
 export type HomepageContentValidationError =
@@ -18,7 +20,8 @@ export type HomepageContentValidationError =
   | "invalid_headline"
   | "invalid_supporting_text"
   | "invalid_primary_cta_label"
-  | "invalid_primary_cta_href";
+  | "invalid_primary_cta_href"
+  | "invalid_faqs";
 
 function getHomepageContentStorePath() {
   return (
@@ -46,13 +49,48 @@ function normalizeHomepageContent(
     return null;
   }
 
+  const normalizedFaqs = normalizeFaqs(record.faqs);
+
   return {
     eyebrow: record.eyebrow,
     headline: record.headline,
     supportingText: record.supportingText,
     primaryCtaHref: record.primaryCtaHref,
     primaryCtaLabel: record.primaryCtaLabel,
+    faqs: normalizedFaqs ?? defaultHomepageContent.faqs,
   };
+}
+
+function normalizeFaqs(value: unknown): HomepageFaqItem[] | null {
+  if (!Array.isArray(value)) {
+    return null;
+  }
+
+  const normalized = value
+    .map((faqItem): HomepageFaqItem | null => {
+      if (!faqItem || typeof faqItem !== "object" || Array.isArray(faqItem)) {
+        return null;
+      }
+
+      const record = faqItem as Record<string, unknown>;
+
+      if (
+        typeof record.id !== "string" ||
+        typeof record.question !== "string" ||
+        typeof record.answer !== "string"
+      ) {
+        return null;
+      }
+
+      return {
+        id: record.id,
+        question: record.question,
+        answer: record.answer,
+      };
+    })
+    .filter((faqItem): faqItem is HomepageFaqItem => faqItem !== null);
+
+  return normalized.length > 0 ? normalized : null;
 }
 
 function isSafeInternalHref(value: string) {
@@ -87,6 +125,21 @@ export function validateHomepageContent(
     !isSafeInternalHref(content.primaryCtaHref)
   ) {
     return "invalid_primary_cta_href";
+  }
+
+  if (!Array.isArray(content.faqs) || content.faqs.length === 0) {
+    return "invalid_faqs";
+  }
+
+  const hasInvalidFaq = content.faqs.some((faqItem) => {
+    const hasQuestion = requireNonEmpty(faqItem.question);
+    const hasAnswer = requireNonEmpty(faqItem.answer);
+
+    return !hasQuestion || !hasAnswer;
+  });
+
+  if (hasInvalidFaq) {
+    return "invalid_faqs";
   }
 
   return null;

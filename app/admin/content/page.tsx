@@ -127,6 +127,43 @@ export default async function AdminContentPage({
             <p className="text-sm text-zinc-600">Use an internal path like /reserve.</p>
           </div>
 
+          <fieldset className="space-y-4 rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+            <legend className="px-1 text-sm font-medium text-zinc-900">FAQ items</legend>
+            {content.faqs.map((faqItem, index) => (
+              <div key={faqItem.id} className="space-y-2 rounded-2xl border border-zinc-200 bg-white p-4">
+                <label
+                  htmlFor={`faqQuestion${index + 1}`}
+                  className="block text-sm font-medium text-zinc-900"
+                >
+                  FAQ question {index + 1}
+                </label>
+                <input
+                  id={`faqQuestion${index + 1}`}
+                  name={`faqQuestion${index + 1}`}
+                  type="text"
+                  defaultValue={faqItem.question}
+                  required
+                  className="w-full rounded-2xl border border-zinc-300 px-4 py-3 text-zinc-900 outline-none transition focus:border-zinc-500"
+                />
+
+                <label
+                  htmlFor={`faqAnswer${index + 1}`}
+                  className="block text-sm font-medium text-zinc-900"
+                >
+                  FAQ answer {index + 1}
+                </label>
+                <textarea
+                  id={`faqAnswer${index + 1}`}
+                  name={`faqAnswer${index + 1}`}
+                  rows={2}
+                  defaultValue={faqItem.answer}
+                  required
+                  className="w-full rounded-2xl border border-zinc-300 px-4 py-3 text-zinc-900 outline-none transition focus:border-zinc-500"
+                />
+              </div>
+            ))}
+          </fieldset>
+
           <button
             type="submit"
             className="inline-flex min-h-11 w-full items-center justify-center rounded-full bg-zinc-900 px-6 py-3 text-sm font-medium text-white transition-colors hover:bg-zinc-700 sm:w-auto"
