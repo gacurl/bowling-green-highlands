@@ -52,10 +52,10 @@ export default async function ReservePage({ searchParams }: ReservePageProps) {
     <PageShell
       eyebrow="Reservation Request"
       title="Check availability, then send a reservation request."
-      description="Pick an available date and time, then send your request. This is not a booking."
+      description="Pick an available date and time, then send your request. This is a request only."
       action={
         <p className="text-sm text-slate-200">
-          The operator reviews your request and follows up directly.
+          We review requests and follow up directly.
         </p>
       }
     >
@@ -240,7 +240,7 @@ export default async function ReservePage({ searchParams }: ReservePageProps) {
               id="requestNotes"
               name="requestNotes"
               rows={4}
-              placeholder="Share anything the operator should know."
+              placeholder="Share anything we should know."
               className="w-full rounded-2xl border border-zinc-300 px-4 py-3 text-zinc-900 outline-none transition placeholder:text-zinc-400 focus:border-zinc-500"
             />
           </div>
