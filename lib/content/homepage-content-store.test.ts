@@ -30,6 +30,13 @@ test("writes and reads homepage content", async () => {
     supportingText: "Choose a date and we’ll follow up.",
     primaryCtaLabel: "Request now",
     primaryCtaHref: "/reserve",
+    faqs: [
+      {
+        id: "one",
+        question: "When do you follow up?",
+        answer: "We follow up after review.",
+      },
+    ],
   };
 
   await writeHomepageContent(updatedContent, storePath);
@@ -56,5 +63,21 @@ test("rejects empty required fields", () => {
       headline: " ",
     }),
     "invalid_headline",
+  );
+});
+
+test("rejects FAQ entries with empty question or answer", () => {
+  assert.equal(
+    validateHomepageContent({
+      ...defaultHomepageContent,
+      faqs: [
+        {
+          id: "bad",
+          question: " ",
+          answer: "Answer",
+        },
+      ],
+    }),
+    "invalid_faqs",
   );
 });
