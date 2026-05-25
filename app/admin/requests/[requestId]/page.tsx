@@ -99,17 +99,26 @@ export default async function RequestDetailPage({
           </div>
         </dl>
         {error === "invalid_status" ? (
-          <p className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <p
+            role="alert"
+            className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+          >
             Invalid status update. Try again.
           </p>
         ) : null}
         {error === "invalid_transition" ? (
-          <p className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <p
+            role="alert"
+            className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+          >
             This request status is already set.
           </p>
         ) : null}
         {error === "slot_conflict" ? (
-          <p className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <p
+            role="alert"
+            className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+          >
             Another request is already accepted for this slot.
           </p>
         ) : null}
