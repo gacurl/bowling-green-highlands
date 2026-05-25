@@ -29,12 +29,20 @@ export default async function AdminPage() {
       title="Set availability and review requests."
       description="Pick a date to set availability, then review pending requests."
       action={
-        <Link
-          href="/"
-          className="inline-flex min-h-11 items-center justify-center rounded-full bg-zinc-900 px-6 py-3 text-sm font-medium text-white transition-colors hover:bg-zinc-700"
-        >
-          Return to landing
-        </Link>
+        <div className="flex flex-wrap gap-3">
+          <Link
+            href="/admin/content"
+            className="inline-flex min-h-11 items-center justify-center rounded-full border border-zinc-300 bg-white px-6 py-3 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-100"
+          >
+            Edit homepage content
+          </Link>
+          <Link
+            href="/"
+            className="inline-flex min-h-11 items-center justify-center rounded-full bg-zinc-900 px-6 py-3 text-sm font-medium text-white transition-colors hover:bg-zinc-700"
+          >
+            Return to landing
+          </Link>
+        </div>
       }
     >
       <MonthCalendar

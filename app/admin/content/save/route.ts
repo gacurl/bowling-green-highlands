@@ -1,0 +1,29 @@
+import { redirect } from "next/navigation";
+import { writeHomepageContent } from "../../../../lib/content/homepage-content-store";
+
+function readRequiredString(formData: FormData, key: string) {
+  const value = formData.get(key);
+
+  if (typeof value !== "string" || !value.trim()) {
+    throw new Error(`Missing required form field: ${key}`);
+  }
+
+  return value.trim();
+}
+
+export async function POST(request: Request) {
+  try {
+    const formData = await request.formData();
+    await writeHomepageContent({
+      eyebrow: readRequiredString(formData, "eyebrow"),
+      headline: readRequiredString(formData, "headline"),
+      supportingText: readRequiredString(formData, "supportingText"),
+      primaryCtaLabel: readRequiredString(formData, "primaryCtaLabel"),
+      primaryCtaHref: readRequiredString(formData, "primaryCtaHref"),
+    });
+  } catch {
+    redirect("/admin/content?error=invalid_content");
+  }
+
+  redirect("/admin/content?saved=1");
+}

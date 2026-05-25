@@ -6,7 +6,7 @@ export type HomepageContent = {
   primaryCtaLabel: string;
 };
 
-export const homepageContent: HomepageContent = {
+export const defaultHomepageContent: HomepageContent = {
   eyebrow: "Bowling Green Highlands",
   headline: "Request a farm stay date.",
   supportingText: "Choose an available date. We’ll follow up to confirm.",
