@@ -25,3 +25,13 @@ button:not(:disabled) {
 button:disabled {
   cursor: not-allowed;
 }
+
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+summary:focus-visible {
+  outline: 3px solid #e5ba41;
+  outline-offset: 2px;
+}

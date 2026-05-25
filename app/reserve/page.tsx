@@ -61,13 +61,19 @@ export default async function ReservePage({ searchParams }: ReservePageProps) {
     >
       <div className="space-y-4">
         {hasValidationError ? (
-          <p className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <p
+            role="alert"
+            className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+          >
             The request could not be sent. Check your name, email, and
             selected time, then try again.
           </p>
         ) : null}
         {hasDeliveryError ? (
-          <p className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <p
+            role="alert"
+            className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+          >
             The request could not be forwarded right now. Please try again in a
             moment.
           </p>
@@ -144,7 +150,10 @@ export default async function ReservePage({ searchParams }: ReservePageProps) {
                   );
                 })
               ) : (
-                <p className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600">
+                <p
+                  id="no-available-slots-note"
+                  className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600"
+                >
                   No dates are currently available to request. Please contact
                   us.
                 </p>
@@ -239,6 +248,7 @@ export default async function ReservePage({ searchParams }: ReservePageProps) {
             type="submit"
             disabled={!hasSelectableSlots}
             aria-disabled={!hasSelectableSlots}
+            aria-describedby={!hasSelectableSlots ? "no-available-slots-note" : undefined}
             className="inline-flex min-h-11 w-full items-center justify-center rounded-full bg-[#E5BA41] px-6 py-3 text-sm font-semibold text-[#2D3C59] transition-colors hover:bg-[#D1855C] hover:text-white disabled:bg-zinc-300 disabled:text-zinc-600 sm:w-auto"
           >
             Submit reservation request
