@@ -30,6 +30,10 @@ test("writes and reads homepage content", async () => {
     supportingText: "Choose a date and we’ll follow up.",
     primaryCtaLabel: "Request now",
     primaryCtaHref: "/reserve",
+    pricingTitle: "Pricing",
+    pricingText: "Pricing details are shared during follow-up.",
+    policyTitle: "Policy",
+    policyText: "Requests are reviewed before dates are confirmed.",
     faqs: [
       {
         id: "one",
@@ -63,6 +67,40 @@ test("rejects empty required fields", () => {
       headline: " ",
     }),
     "invalid_headline",
+  );
+});
+
+test("rejects empty pricing and policy fields", () => {
+  assert.equal(
+    validateHomepageContent({
+      ...defaultHomepageContent,
+      pricingTitle: " ",
+    }),
+    "invalid_pricing_title",
+  );
+
+  assert.equal(
+    validateHomepageContent({
+      ...defaultHomepageContent,
+      pricingText: " ",
+    }),
+    "invalid_pricing_text",
+  );
+
+  assert.equal(
+    validateHomepageContent({
+      ...defaultHomepageContent,
+      policyTitle: " ",
+    }),
+    "invalid_policy_title",
+  );
+
+  assert.equal(
+    validateHomepageContent({
+      ...defaultHomepageContent,
+      policyText: " ",
+    }),
+    "invalid_policy_text",
   );
 });
 
