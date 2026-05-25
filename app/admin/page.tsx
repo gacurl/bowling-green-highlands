@@ -31,7 +31,7 @@ export default async function AdminPage() {
       action={
         <Link
           href="/"
-          className="inline-flex items-center justify-center rounded-full bg-zinc-900 px-6 py-3 text-sm font-medium text-white transition-colors hover:bg-zinc-700"
+          className="inline-flex min-h-11 items-center justify-center rounded-full bg-zinc-900 px-6 py-3 text-sm font-medium text-white transition-colors hover:bg-zinc-700"
         >
           Return to landing
         </Link>
@@ -41,18 +41,18 @@ export default async function AdminPage() {
         initialAvailability={initialAvailability}
         todayIso={todayIso}
       />
-      <details className="mt-6 rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm">
+      <details className="mt-6 rounded-3xl border border-zinc-200 bg-white p-4 shadow-sm sm:p-6">
         <summary className="cursor-pointer list-none">
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h2 className="text-xl font-semibold text-zinc-900">
+              <h2 className="text-lg font-semibold text-zinc-900 sm:text-xl">
                 Reservation requests
               </h2>
               <p className="text-sm text-zinc-600">
                 Pending requests need action. Accepted and declined are read-only.
               </p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 self-start sm:self-auto">
               <span className="rounded-full border border-zinc-300 bg-zinc-100 px-3 py-1 text-sm font-medium text-zinc-700">
                 {requestListItems.length}
               </span>
@@ -124,7 +124,7 @@ export default async function AdminPage() {
                 <div className="mt-4">
                   <Link
                     href={`/admin/requests/${requestListItem.id}`}
-                    className={`text-sm font-medium underline underline-offset-2 ${
+                    className={`inline-flex min-h-11 items-center text-sm font-medium underline underline-offset-2 ${
                       requestListItem.status === "pending"
                         ? "text-amber-900 hover:text-amber-800"
                         : "text-zinc-900 hover:text-zinc-700"

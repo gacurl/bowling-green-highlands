@@ -75,7 +75,7 @@ export default async function ReservePage({ searchParams }: ReservePageProps) {
         <form
           action="/reserve/submit"
           method="post"
-          className="space-y-5 rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm"
+          className="space-y-5 rounded-3xl border border-zinc-200 bg-white p-4 shadow-sm sm:p-6"
         >
           <fieldset className="space-y-4">
             <div className="space-y-1">
@@ -239,7 +239,7 @@ export default async function ReservePage({ searchParams }: ReservePageProps) {
             type="submit"
             disabled={!hasSelectableSlots}
             aria-disabled={!hasSelectableSlots}
-            className="inline-flex items-center justify-center rounded-full bg-[#E5BA41] px-6 py-3 text-sm font-semibold text-[#2D3C59] transition-colors hover:bg-[#D1855C] hover:text-white disabled:bg-zinc-300 disabled:text-zinc-600"
+            className="inline-flex min-h-11 w-full items-center justify-center rounded-full bg-[#E5BA41] px-6 py-3 text-sm font-semibold text-[#2D3C59] transition-colors hover:bg-[#D1855C] hover:text-white disabled:bg-zinc-300 disabled:text-zinc-600 sm:w-auto"
           >
             Submit reservation request
           </button>

@@ -42,13 +42,13 @@ export default async function RequestDetailPage({
       action={
         <Link
           href="/admin"
-          className="inline-flex items-center justify-center rounded-full bg-zinc-900 px-6 py-3 text-sm font-medium text-white transition-colors hover:bg-zinc-700"
+          className="inline-flex min-h-11 w-full items-center justify-center rounded-full bg-zinc-900 px-6 py-3 text-sm font-medium text-white transition-colors hover:bg-zinc-700 sm:w-auto"
         >
           Back to admin
         </Link>
       }
     >
-      <article className="rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm">
+      <article className="rounded-3xl border border-zinc-200 bg-white p-4 shadow-sm sm:p-6">
         {requestDetail.status === "pending" ? (
           <p className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
             Needs action: accept or decline this request.
@@ -117,13 +117,13 @@ export default async function RequestDetailPage({
           <form
             action={`/admin/requests/${requestDetail.id}/status`}
             method="post"
-            className="mt-6 flex flex-wrap items-center gap-3"
+            className="mt-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center"
           >
             <button
               type="submit"
               name="status"
               value="accepted"
-              className="inline-flex items-center justify-center rounded-full bg-zinc-900 px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-700"
+              className="inline-flex min-h-11 w-full items-center justify-center rounded-full bg-zinc-900 px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-700 sm:w-auto"
             >
               Accept request
             </button>
@@ -131,7 +131,7 @@ export default async function RequestDetailPage({
               type="submit"
               name="status"
               value="declined"
-              className="inline-flex items-center justify-center rounded-full border border-zinc-300 bg-white px-5 py-2 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-100"
+              className="inline-flex min-h-11 w-full items-center justify-center rounded-full border border-zinc-300 bg-white px-5 py-2 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-100 sm:w-auto"
             >
               Decline request
             </button>
