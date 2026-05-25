@@ -26,7 +26,7 @@ export default async function ConfirmationPage() {
       }
       description={
         hasConfirmedRequest
-          ? "Your request was sent to the operator. It is not booked or confirmed yet."
+          ? "Your request was received. We’ll follow up to confirm."
           : "Start a reservation request first."
       }
       action={
@@ -71,7 +71,7 @@ export default async function ConfirmationPage() {
               <dd>{confirmationState.requestNotes || "None provided"}</dd>
             </div>
             <div>
-              <dt className="font-medium text-zinc-900">Operator email</dt>
+              <dt className="font-medium text-zinc-900">Contact email</dt>
               <dd>{confirmationState.contactEmail || "Not configured"}</dd>
             </div>
           </dl>
