@@ -98,46 +98,69 @@ export function MonthCalendar({
   );
   const [dayAvailability, setDayAvailability] =
     useState<Record<string, OperatorDayAvailability>>(initialAvailability);
-  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [selectedDates, setSelectedDates] = useState<string[]>([]);
   const [saveError, setSaveError] = useState(false);
   const calendarCells = buildCalendarCells(displayMonth);
-  const selectedDayAvailability = selectedDate
-    ? dayAvailability[selectedDate] ?? DEFAULT_DAY_AVAILABILITY
+  const selectedCount = selectedDates.length;
+  const selectedDateLabel =
+    selectedCount === 1 ? formatSelectedDate(selectedDates[0]) : null;
+  const selectedDayAvailability = selectedDateLabel
+    ? dayAvailability[selectedDates[0]] ?? DEFAULT_DAY_AVAILABILITY
     : null;
   const selectedDayStateLabel =
     selectedDayAvailability?.mode === "available" ? "Available" : "Blocked";
 
-  function updateSelectedDayAvailability(mode: OperatorAvailabilityMode) {
-    if (!selectedDate) {
+  async function updateSelectedDayAvailability(mode: OperatorAvailabilityMode) {
+    if (selectedCount === 0) {
       return;
     }
 
-    const dateToUpdate = selectedDate;
+    const datesToUpdate = [...selectedDates];
 
     setSaveError(false);
 
-    fetch("/admin/availability", {
-      body: JSON.stringify({ date: dateToUpdate, mode }),
-      headers: {
-        "Content-Type": "application/json",
-      },
-      method: "POST",
-    })
-      .then((response) => {
+    try {
+      for (const dateToUpdate of datesToUpdate) {
+        const response = await fetch("/admin/availability", {
+          body: JSON.stringify({ date: dateToUpdate, mode }),
+          headers: {
+            "Content-Type": "application/json",
+          },
+          method: "POST",
+        });
+
         if (!response.ok) {
           setSaveError(true);
           return;
         }
+      }
 
-        setDayAvailability((current) => {
-          const nextAvailability = { ...current };
-
+      setDayAvailability((current) => {
+        const nextAvailability = { ...current };
+        for (const dateToUpdate of datesToUpdate) {
           nextAvailability[dateToUpdate] = { mode };
+        }
+        return nextAvailability;
+      });
+    } catch {
+      setSaveError(true);
+    }
+  }
 
-          return nextAvailability;
-        });
-      })
-      .catch(() => setSaveError(true));
+  function toggleSelectedDate(date: string | null) {
+    if (!date) {
+      return;
+    }
+
+    setSelectedDates((current) => {
+      if (current.includes(date)) {
+        return current.filter((selectedDate) => selectedDate !== date);
+      }
+
+      return [...current, date].sort((firstDate, secondDate) =>
+        firstDate.localeCompare(secondDate),
+      );
+    });
   }
 
   return (
@@ -189,7 +212,7 @@ export function MonthCalendar({
             : null;
           const isBlocked = dayState?.mode === "unavailable";
           const isSelected =
-            cell.isoDate !== null && cell.isoDate === selectedDate;
+            cell.isoDate !== null && selectedDates.includes(cell.isoDate);
           const stateLabel = isBlocked ? "Blocked" : "Available";
 
           return (
@@ -218,7 +241,7 @@ export function MonthCalendar({
               {cell.dayNumber !== null ? (
                 <button
                   type="button"
-                  onClick={() => setSelectedDate(cell.isoDate)}
+                  onClick={() => toggleSelectedDate(cell.isoDate)}
                   className="flex h-full min-h-10 w-full items-start text-left sm:min-h-0"
                 >
                   <span className="font-medium">{cell.dayNumber}</span>
@@ -228,7 +251,7 @@ export function MonthCalendar({
           );
         })}
       </div>
-      {selectedDate ? (
+      {selectedCount > 0 ? (
         <div className="mt-6 rounded-3xl border border-zinc-200 bg-zinc-50 p-4 sm:p-5">
           <div className="flex flex-wrap items-start justify-between gap-3 sm:gap-4">
             <div className="space-y-1">
@@ -236,43 +259,39 @@ export function MonthCalendar({
                 Set availability
               </h3>
               <p className="text-sm text-zinc-600">
-                {formatSelectedDate(selectedDate)}
+                {selectedDateLabel
+                  ? selectedDateLabel
+                  : `${selectedCount} dates selected`}
               </p>
-              <p className="text-sm font-medium text-zinc-800">
-                Current: {selectedDayStateLabel}
-              </p>
+              {selectedDateLabel ? (
+                <p className="text-sm font-medium text-zinc-800">
+                  Current: {selectedDayStateLabel}
+                </p>
+              ) : null}
             </div>
             <button
               type="button"
-              onClick={() => setSelectedDate(null)}
+              onClick={() => setSelectedDates([])}
               className="min-h-11 rounded-full border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 transition hover:border-zinc-500 hover:text-zinc-900"
             >
-              Done
+              Clear selection
             </button>
           </div>
-          <div className="mt-5 space-y-4">
-            <label className="flex items-center gap-3 rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-900">
-              <input
-                type="radio"
-                name="availabilityMode"
-                value="unavailable"
-                checked={selectedDayAvailability?.mode === "unavailable"}
-                onChange={() => updateSelectedDayAvailability("unavailable")}
-                className="h-4 w-4 border-zinc-300 text-zinc-900 focus:ring-zinc-500"
-              />
-              <span className="font-medium">Blocked (not requestable)</span>
-            </label>
-            <label className="flex items-center gap-3 rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-900">
-              <input
-                type="radio"
-                name="availabilityMode"
-                value="available"
-                checked={selectedDayAvailability?.mode === "available"}
-                onChange={() => updateSelectedDayAvailability("available")}
-                className="h-4 w-4 border-zinc-300 text-zinc-900 focus:ring-zinc-500"
-              />
-              <span className="font-medium">Available (requestable)</span>
-            </label>
+          <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+            <button
+              type="button"
+              onClick={() => updateSelectedDayAvailability("unavailable")}
+              className="inline-flex min-h-11 w-full items-center justify-center rounded-full border border-zinc-300 bg-white px-4 py-3 text-sm font-medium text-zinc-900 transition hover:bg-zinc-100 sm:w-auto"
+            >
+              Mark selected blocked
+            </button>
+            <button
+              type="button"
+              onClick={() => updateSelectedDayAvailability("available")}
+              className="inline-flex min-h-11 w-full items-center justify-center rounded-full bg-zinc-900 px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-zinc-700 sm:w-auto"
+            >
+              Mark selected available
+            </button>
             {saveError ? (
               <p className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
                 Availability could not be saved. Try the change again.
