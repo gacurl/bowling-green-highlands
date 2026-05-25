@@ -199,8 +199,8 @@ export function MonthCalendar({
                 cell.dayNumber === null
                   ? "border-transparent bg-transparent"
                   : isSelected
-                    ? "border-zinc-950 ring-2 ring-zinc-950"
-                  : isToday
+                    ? "border-[#E5BA41] bg-[#2D3C59] text-white ring-2 ring-[#E5BA41]"
+                    : isToday
                     ? isBlocked
                       ? "border-zinc-900 bg-zinc-900 text-white"
                       : "border-emerald-700 bg-emerald-600 text-white"

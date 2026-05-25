@@ -34,7 +34,11 @@ export default async function RequestDetailPage({
     <PageShell
       eyebrow="Operator Area"
       title="Reservation request"
-      description="Read-only request details. This is not a confirmed booking."
+      description={
+        requestDetail.status === "pending"
+          ? "Review this pending request and choose one action."
+          : "Request details. This request status is already set."
+      }
       action={
         <Link
           href="/admin"
@@ -45,6 +49,11 @@ export default async function RequestDetailPage({
       }
     >
       <article className="rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm">
+        {requestDetail.status === "pending" ? (
+          <p className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
+            Needs action: accept or decline this request.
+          </p>
+        ) : null}
         <dl className="space-y-3 text-sm text-zinc-700">
           <div>
             <dt className="font-medium text-zinc-900">Submitted</dt>
@@ -127,7 +136,13 @@ export default async function RequestDetailPage({
               Decline request
             </button>
           </form>
-        ) : null}
+        ) : (
+          <p className="mt-6 rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-700">
+            No action needed. This request is already{" "}
+            {getReservationRequestStatusLabel(requestDetail.status).toLowerCase()}
+            .
+          </p>
+        )}
       </article>
     </PageShell>
   );
