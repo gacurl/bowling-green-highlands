@@ -13,6 +13,7 @@ export default async function Home() {
       eyebrow={homepageContent.eyebrow}
       title={homepageContent.headline}
       description={homepageContent.supportingText}
+      actionAfterChildren={false}
       action={
         <Link
           href={homepageContent.primaryCtaHref}

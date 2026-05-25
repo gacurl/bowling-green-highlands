@@ -11,6 +11,10 @@ export type HomepageContent = {
   primaryCtaHref: string;
   primaryCtaLabel: string;
   faqs: HomepageFaqItem[];
+  pricingTitle: string;
+  pricingText: string;
+  policyTitle: string;
+  policyText: string;
 };
 
 export const defaultHomepageContent: HomepageContent = {
@@ -36,4 +40,10 @@ export const defaultHomepageContent: HomepageContent = {
       answer: "Only dates currently marked available to request.",
     },
   ],
+  pricingTitle: "Pricing",
+  pricingText:
+    "Pricing details are shared during follow-up after we review your request.",
+  policyTitle: "Policy",
+  policyText:
+    "Requests are reviewed before dates are confirmed. We’ll follow up with next steps.",
 };

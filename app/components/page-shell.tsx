@@ -6,6 +6,7 @@ type PageShellProps = {
   description: string;
   action: ReactNode;
   children?: ReactNode;
+  actionAfterChildren?: boolean;
 };
 
 export function PageShell({
@@ -14,6 +15,7 @@ export function PageShell({
   description,
   action,
   children,
+  actionAfterChildren = true,
 }: PageShellProps) {
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col justify-center gap-6 px-4 py-10 sm:gap-8 sm:px-6 sm:py-16">
@@ -28,8 +30,17 @@ export function PageShell({
           {description}
         </p>
       </div>
-      {children ? <div>{children}</div> : null}
-      <div>{action}</div>
+      {actionAfterChildren ? (
+        <>
+          {children ? <div>{children}</div> : null}
+          <div>{action}</div>
+        </>
+      ) : (
+        <>
+          <div>{action}</div>
+          {children ? <div>{children}</div> : null}
+        </>
+      )}
     </main>
   );
 }

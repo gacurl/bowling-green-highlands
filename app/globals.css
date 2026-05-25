@@ -35,3 +35,24 @@ summary:focus-visible {
   outline: 3px solid #e5ba41;
   outline-offset: 2px;
 }
+
+.disclosure-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.disclosure-summary::-webkit-details-marker {
+  display: none;
+}
+
+.disclosure-chevron {
+  color: #475569;
+  font-size: 0.875rem;
+  line-height: 1;
+  transition: transform 0.2s ease;
+}
+
+details[open] > .disclosure-summary .disclosure-chevron {
+  transform: rotate(90deg);
+}

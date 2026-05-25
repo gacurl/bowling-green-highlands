@@ -13,6 +13,10 @@ type HomepageContentStoreFile = {
   primaryCtaHref?: unknown;
   primaryCtaLabel?: unknown;
   faqs?: unknown;
+  pricingTitle?: unknown;
+  pricingText?: unknown;
+  policyTitle?: unknown;
+  policyText?: unknown;
 };
 
 export type HomepageContentValidationError =
@@ -21,7 +25,11 @@ export type HomepageContentValidationError =
   | "invalid_supporting_text"
   | "invalid_primary_cta_label"
   | "invalid_primary_cta_href"
-  | "invalid_faqs";
+  | "invalid_faqs"
+  | "invalid_pricing_title"
+  | "invalid_pricing_text"
+  | "invalid_policy_title"
+  | "invalid_policy_text";
 
 function getHomepageContentStorePath() {
   return (
@@ -44,7 +52,11 @@ function normalizeHomepageContent(
     typeof record.headline !== "string" ||
     typeof record.supportingText !== "string" ||
     typeof record.primaryCtaHref !== "string" ||
-    typeof record.primaryCtaLabel !== "string"
+    typeof record.primaryCtaLabel !== "string" ||
+    typeof record.pricingTitle !== "string" ||
+    typeof record.pricingText !== "string" ||
+    typeof record.policyTitle !== "string" ||
+    typeof record.policyText !== "string"
   ) {
     return null;
   }
@@ -58,6 +70,10 @@ function normalizeHomepageContent(
     primaryCtaHref: record.primaryCtaHref,
     primaryCtaLabel: record.primaryCtaLabel,
     faqs: normalizedFaqs ?? defaultHomepageContent.faqs,
+    pricingTitle: record.pricingTitle,
+    pricingText: record.pricingText,
+    policyTitle: record.policyTitle,
+    policyText: record.policyText,
   };
 }
 
@@ -125,6 +141,22 @@ export function validateHomepageContent(
     !isSafeInternalHref(content.primaryCtaHref)
   ) {
     return "invalid_primary_cta_href";
+  }
+
+  if (!requireNonEmpty(content.pricingTitle)) {
+    return "invalid_pricing_title";
+  }
+
+  if (!requireNonEmpty(content.pricingText)) {
+    return "invalid_pricing_text";
+  }
+
+  if (!requireNonEmpty(content.policyTitle)) {
+    return "invalid_policy_title";
+  }
+
+  if (!requireNonEmpty(content.policyText)) {
+    return "invalid_policy_text";
   }
 
   if (!Array.isArray(content.faqs) || content.faqs.length === 0) {

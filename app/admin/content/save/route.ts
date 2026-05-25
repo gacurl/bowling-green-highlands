@@ -27,6 +27,10 @@ export async function POST(request: Request) {
       supportingText: readRequiredString(formData, "supportingText"),
       primaryCtaLabel: readRequiredString(formData, "primaryCtaLabel"),
       primaryCtaHref: readRequiredString(formData, "primaryCtaHref"),
+      pricingTitle: readRequiredString(formData, "pricingTitle"),
+      pricingText: readRequiredString(formData, "pricingText"),
+      policyTitle: readRequiredString(formData, "policyTitle"),
+      policyText: readRequiredString(formData, "policyText"),
       faqs,
     });
   } catch {
