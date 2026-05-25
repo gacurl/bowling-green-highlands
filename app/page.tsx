@@ -1,8 +1,10 @@
 import Link from "next/link";
 import { PageShell } from "./components/page-shell";
-import { homepageContent } from "../lib/content/homepage-content";
+import { readHomepageContent } from "../lib/content/homepage-content-store";
 
-export default function Home() {
+export default async function Home() {
+  const homepageContent = await readHomepageContent();
+
   return (
     <PageShell
       eyebrow={homepageContent.eyebrow}
