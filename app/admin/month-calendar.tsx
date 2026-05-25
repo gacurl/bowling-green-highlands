@@ -141,29 +141,29 @@ export function MonthCalendar({
   }
 
   return (
-    <section className="rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm">
-      <div className="flex items-center justify-between gap-4">
+    <section className="rounded-3xl border border-zinc-200 bg-white p-4 shadow-sm sm:p-6">
+      <div className="flex items-center justify-between gap-2 sm:gap-4">
         <button
           type="button"
           onClick={() => setDisplayMonth((current) => addMonths(current, -1))}
-          className="rounded-full border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 transition hover:border-zinc-500 hover:text-zinc-900"
+          className="min-h-11 rounded-full border border-zinc-300 px-3 py-2 text-sm font-medium text-zinc-700 transition hover:border-zinc-500 hover:text-zinc-900 sm:px-4"
           aria-label="Previous month"
         >
           Previous
         </button>
-        <h2 className="text-xl font-semibold text-zinc-900">
+        <h2 className="text-center text-base font-semibold text-zinc-900 sm:text-xl">
           {formatMonthLabel(displayMonth)}
         </h2>
         <button
           type="button"
           onClick={() => setDisplayMonth((current) => addMonths(current, 1))}
-          className="rounded-full border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 transition hover:border-zinc-500 hover:text-zinc-900"
+          className="min-h-11 rounded-full border border-zinc-300 px-3 py-2 text-sm font-medium text-zinc-700 transition hover:border-zinc-500 hover:text-zinc-900 sm:px-4"
           aria-label="Next month"
         >
           Next
         </button>
       </div>
-      <div className="mt-4 flex items-center gap-4 text-sm text-zinc-600">
+      <div className="mt-4 flex flex-wrap items-center gap-3 text-sm text-zinc-600">
         <span className="inline-flex items-center gap-2">
           <span className="h-3 w-3 rounded-full border border-emerald-300 bg-emerald-100" />
           Available
@@ -173,11 +173,11 @@ export function MonthCalendar({
           Blocked
         </span>
       </div>
-      <div className="mt-6 grid grid-cols-7 gap-2" aria-label="Month calendar">
+      <div className="mt-6 grid grid-cols-7 gap-1.5 sm:gap-2" aria-label="Month calendar">
         {WEEKDAY_LABELS.map((weekday) => (
           <div
             key={weekday}
-            className="px-2 pb-2 text-center text-xs font-medium uppercase tracking-[0.16em] text-zinc-500"
+            className="px-1 pb-1 text-center text-[10px] font-medium uppercase tracking-[0.14em] text-zinc-500 sm:px-2 sm:pb-2 sm:text-xs sm:tracking-[0.16em]"
           >
             {weekday}
           </div>
@@ -195,7 +195,7 @@ export function MonthCalendar({
           return (
             <div
               key={cell.isoDate ?? `empty-${index}`}
-              className={`min-h-20 rounded-2xl border px-3 py-3 text-sm ${
+              className={`min-h-16 rounded-xl border px-2 py-2 text-sm sm:min-h-20 sm:rounded-2xl sm:px-3 sm:py-3 ${
                 cell.dayNumber === null
                   ? "border-transparent bg-transparent"
                   : isSelected
@@ -219,7 +219,7 @@ export function MonthCalendar({
                 <button
                   type="button"
                   onClick={() => setSelectedDate(cell.isoDate)}
-                  className="flex h-full w-full items-start text-left"
+                  className="flex h-full min-h-10 w-full items-start text-left sm:min-h-0"
                 >
                   <span className="font-medium">{cell.dayNumber}</span>
                 </button>
@@ -229,8 +229,8 @@ export function MonthCalendar({
         })}
       </div>
       {selectedDate ? (
-        <div className="mt-6 rounded-3xl border border-zinc-200 bg-zinc-50 p-5">
-          <div className="flex items-start justify-between gap-4">
+        <div className="mt-6 rounded-3xl border border-zinc-200 bg-zinc-50 p-4 sm:p-5">
+          <div className="flex flex-wrap items-start justify-between gap-3 sm:gap-4">
             <div className="space-y-1">
               <h3 className="text-lg font-semibold text-zinc-900">
                 Set availability
@@ -245,7 +245,7 @@ export function MonthCalendar({
             <button
               type="button"
               onClick={() => setSelectedDate(null)}
-              className="rounded-full border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 transition hover:border-zinc-500 hover:text-zinc-900"
+              className="min-h-11 rounded-full border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 transition hover:border-zinc-500 hover:text-zinc-900"
             >
               Done
             </button>

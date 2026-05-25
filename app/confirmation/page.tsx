@@ -33,14 +33,14 @@ export default async function ConfirmationPage() {
         hasConfirmedRequest ? (
           <Link
             href="/"
-            className="inline-flex items-center justify-center rounded-full bg-[#E5BA41] px-6 py-3 text-sm font-semibold text-[#2D3C59] transition-colors hover:bg-[#D1855C] hover:text-white"
+            className="inline-flex min-h-11 w-full items-center justify-center rounded-full bg-[#E5BA41] px-6 py-3 text-sm font-semibold text-[#2D3C59] transition-colors hover:bg-[#D1855C] hover:text-white sm:w-auto"
           >
             Back to landing
           </Link>
         ) : (
           <Link
             href="/reserve"
-            className="inline-flex items-center justify-center rounded-full bg-[#E5BA41] px-6 py-3 text-sm font-semibold text-[#2D3C59] transition-colors hover:bg-[#D1855C] hover:text-white"
+            className="inline-flex min-h-11 w-full items-center justify-center rounded-full bg-[#E5BA41] px-6 py-3 text-sm font-semibold text-[#2D3C59] transition-colors hover:bg-[#D1855C] hover:text-white sm:w-auto"
           >
             Start a reservation request
           </Link>
@@ -48,7 +48,7 @@ export default async function ConfirmationPage() {
       }
     >
       {confirmationState ? (
-        <div className="rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm">
+        <div className="rounded-3xl border border-zinc-200 bg-white p-4 shadow-sm sm:p-6">
           <dl className="space-y-4 text-sm text-zinc-600">
             <div>
               <dt className="font-medium text-zinc-900">Name</dt>
