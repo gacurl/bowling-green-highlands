@@ -16,12 +16,33 @@ export async function SiteHeader() {
         <Link href="/" className="text-base font-semibold text-slate-50">
           Bowling Green Highlands
         </Link>
-        <nav aria-label="Primary" className="flex items-center gap-3 text-sm sm:gap-4">
-          <Link className="text-[#94A378] hover:text-[#E5BA41]" href="/reserve">
+        <nav
+          aria-label="Primary"
+          className="flex flex-wrap items-center justify-end gap-2 text-sm sm:gap-3"
+        >
+          <Link className="px-2 py-1 text-slate-200 hover:text-white" href="/">
+            Home
+          </Link>
+          <Link
+            className="px-2 py-1 text-slate-200 hover:text-white"
+            href="/#homepage-faq"
+          >
+            FAQ
+          </Link>
+          <Link className="px-2 py-1 text-slate-200 hover:text-white" href="/pricing">
+            Pricing
+          </Link>
+          <Link className="px-2 py-1 text-slate-200 hover:text-white" href="/policy">
+            Policy
+          </Link>
+          <Link
+            className="inline-flex min-h-10 items-center justify-center rounded-full bg-[#E5BA41] px-4 py-2 font-semibold text-[#2D3C59] transition-colors hover:bg-[#D1855C] hover:text-white"
+            href="/reserve"
+          >
             Reserve
           </Link>
           {showAdminNavigation ? (
-            <Link className="text-[#94A378] hover:text-[#E5BA41]" href="/admin">
+            <Link className="px-2 py-1 text-slate-200 hover:text-white" href="/admin">
               Admin
             </Link>
           ) : null}
