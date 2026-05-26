@@ -117,6 +117,10 @@ function requireNonEmpty(value: string) {
   return value.trim().length > 0;
 }
 
+function requireMinLength(value: string, minimumLength: number) {
+  return value.trim().length >= minimumLength;
+}
+
 export function validateHomepageContent(
   content: HomepageContent,
 ): HomepageContentValidationError | null {
@@ -128,11 +132,23 @@ export function validateHomepageContent(
     return "invalid_headline";
   }
 
+  if (!requireMinLength(content.headline, 3)) {
+    return "invalid_headline";
+  }
+
   if (!requireNonEmpty(content.supportingText)) {
     return "invalid_supporting_text";
   }
 
+  if (!requireMinLength(content.supportingText, 8)) {
+    return "invalid_supporting_text";
+  }
+
   if (!requireNonEmpty(content.primaryCtaLabel)) {
+    return "invalid_primary_cta_label";
+  }
+
+  if (!requireMinLength(content.primaryCtaLabel, 3)) {
     return "invalid_primary_cta_label";
   }
 
@@ -147,7 +163,15 @@ export function validateHomepageContent(
     return "invalid_pricing_title";
   }
 
+  if (!requireMinLength(content.pricingTitle, 3)) {
+    return "invalid_pricing_title";
+  }
+
   if (!requireNonEmpty(content.pricingText)) {
+    return "invalid_pricing_text";
+  }
+
+  if (!requireMinLength(content.pricingText, 8)) {
     return "invalid_pricing_text";
   }
 
@@ -155,7 +179,15 @@ export function validateHomepageContent(
     return "invalid_policy_title";
   }
 
+  if (!requireMinLength(content.policyTitle, 3)) {
+    return "invalid_policy_title";
+  }
+
   if (!requireNonEmpty(content.policyText)) {
+    return "invalid_policy_text";
+  }
+
+  if (!requireMinLength(content.policyText, 8)) {
     return "invalid_policy_text";
   }
 

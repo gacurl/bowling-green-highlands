@@ -42,7 +42,7 @@ export default async function AdminContentPage({
             role="alert"
             className="mb-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800"
           >
-            Could not save. Fill every field and use a link like /reserve.
+            {error}
           </p>
         ) : null}
 

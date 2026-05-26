@@ -118,4 +118,52 @@ test("rejects FAQ entries with empty question or answer", () => {
     }),
     "invalid_faqs",
   );
+
+  assert.equal(
+    validateHomepageContent({
+      ...defaultHomepageContent,
+      faqs: [
+        {
+          id: "bad",
+          question: "Question",
+          answer: " ",
+        },
+      ],
+    }),
+    "invalid_faqs",
+  );
+});
+
+test("rejects near-empty critical content", () => {
+  assert.equal(
+    validateHomepageContent({
+      ...defaultHomepageContent,
+      headline: "Hi",
+    }),
+    "invalid_headline",
+  );
+
+  assert.equal(
+    validateHomepageContent({
+      ...defaultHomepageContent,
+      primaryCtaLabel: "Go",
+    }),
+    "invalid_primary_cta_label",
+  );
+
+  assert.equal(
+    validateHomepageContent({
+      ...defaultHomepageContent,
+      pricingText: "Short",
+    }),
+    "invalid_pricing_text",
+  );
+
+  assert.equal(
+    validateHomepageContent({
+      ...defaultHomepageContent,
+      policyText: "Short",
+    }),
+    "invalid_policy_text",
+  );
 });
