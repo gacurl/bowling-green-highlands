@@ -17,8 +17,8 @@ export default async function AdminContentPage({
   return (
     <PageShell
       eyebrow="Operator Area"
-      title="Edit homepage content."
-      description="Update customer-facing homepage text."
+      title="Homepage Content"
+      description="Edit what guests read on the homepage, then save."
       action={
         <Link
           href="/admin"
@@ -30,31 +30,53 @@ export default async function AdminContentPage({
     >
       <article className="rounded-3xl border border-zinc-200 bg-white p-4 shadow-sm sm:p-6">
         {hasSaved ? (
-          <p className="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-            Homepage content saved.
+          <p
+            role="status"
+            className="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800"
+          >
+            Saved. Homepage updates are live now.
           </p>
         ) : null}
         {error ? (
-          <p className="mb-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-            Could not save homepage content. Check required fields and CTA link.
+          <p
+            role="alert"
+            className="mb-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800"
+          >
+            Could not save. Fill every field and use a link like /reserve.
           </p>
         ) : null}
 
-        <form action="/admin/content/save" method="post" className="space-y-4">
+        <form action="/admin/content/save" method="post" className="space-y-6">
+          <section className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+            <h2 className="text-sm font-semibold text-zinc-900">Before you save</h2>
+            <p className="mt-1 text-sm text-zinc-700">
+              Review each section. Save once when you are done.
+            </p>
+            <button
+              type="submit"
+              className="mt-3 inline-flex min-h-11 w-full items-center justify-center rounded-full bg-zinc-900 px-6 py-3 text-sm font-medium text-white transition-colors hover:bg-zinc-700 sm:w-auto"
+            >
+              Save all homepage changes
+            </button>
+          </section>
+
           <details open className="rounded-2xl border border-zinc-200 bg-zinc-50">
             <summary className="disclosure-summary cursor-pointer list-none px-4 py-3 text-sm font-semibold text-zinc-900">
-              <span>Homepage hero</span>
+              <span>Top section guests see first</span>
               <span aria-hidden="true" className="disclosure-chevron">
                 ▸
               </span>
             </summary>
             <div className="space-y-4 border-t border-zinc-200 bg-white p-4">
+              <p className="text-sm text-zinc-600">
+                Controls the headline, short message, and main button.
+              </p>
               <div className="space-y-2">
                 <label
                   htmlFor="eyebrow"
                   className="block text-sm font-medium text-zinc-900"
                 >
-                  Eyebrow
+                  Short top label
                 </label>
                 <input
                   id="eyebrow"
@@ -71,7 +93,7 @@ export default async function AdminContentPage({
                   htmlFor="headline"
                   className="block text-sm font-medium text-zinc-900"
                 >
-                  Headline
+                  Main headline
                 </label>
                 <input
                   id="headline"
@@ -88,7 +110,7 @@ export default async function AdminContentPage({
                   htmlFor="supportingText"
                   className="block text-sm font-medium text-zinc-900"
                 >
-                  Supporting text
+                  Supporting message
                 </label>
                 <textarea
                   id="supportingText"
@@ -105,7 +127,7 @@ export default async function AdminContentPage({
                   htmlFor="primaryCtaLabel"
                   className="block text-sm font-medium text-zinc-900"
                 >
-                  Primary CTA label
+                  Main button text
                 </label>
                 <input
                   id="primaryCtaLabel"
@@ -122,7 +144,7 @@ export default async function AdminContentPage({
                   htmlFor="primaryCtaHref"
                   className="block text-sm font-medium text-zinc-900"
                 >
-                  Primary CTA link
+                  Main button link
                 </label>
                 <input
                   id="primaryCtaHref"
@@ -141,18 +163,21 @@ export default async function AdminContentPage({
 
           <details className="rounded-2xl border border-zinc-200 bg-zinc-50">
             <summary className="disclosure-summary cursor-pointer list-none px-4 py-3 text-sm font-semibold text-zinc-900">
-              <span>Pricing</span>
+              <span>Pricing section</span>
               <span aria-hidden="true" className="disclosure-chevron">
                 ▸
               </span>
             </summary>
             <div className="space-y-4 border-t border-zinc-200 bg-white p-4">
+              <p className="text-sm text-zinc-600">
+                Explains how guests receive pricing after a request.
+              </p>
               <div className="space-y-2">
                 <label
                   htmlFor="pricingTitle"
                   className="block text-sm font-medium text-zinc-900"
                 >
-                  Pricing title
+                  Section heading
                 </label>
                 <input
                   id="pricingTitle"
@@ -169,7 +194,7 @@ export default async function AdminContentPage({
                   htmlFor="pricingText"
                   className="block text-sm font-medium text-zinc-900"
                 >
-                  Pricing text
+                  Section message
                 </label>
                 <textarea
                   id="pricingText"
@@ -185,18 +210,21 @@ export default async function AdminContentPage({
 
           <details className="rounded-2xl border border-zinc-200 bg-zinc-50">
             <summary className="disclosure-summary cursor-pointer list-none px-4 py-3 text-sm font-semibold text-zinc-900">
-              <span>Policy</span>
+              <span>Policy section</span>
               <span aria-hidden="true" className="disclosure-chevron">
                 ▸
               </span>
             </summary>
             <div className="space-y-4 border-t border-zinc-200 bg-white p-4">
+              <p className="text-sm text-zinc-600">
+                Sets expectations about review and follow-up.
+              </p>
               <div className="space-y-2">
                 <label
                   htmlFor="policyTitle"
                   className="block text-sm font-medium text-zinc-900"
                 >
-                  Policy title
+                  Section heading
                 </label>
                 <input
                   id="policyTitle"
@@ -213,7 +241,7 @@ export default async function AdminContentPage({
                   htmlFor="policyText"
                   className="block text-sm font-medium text-zinc-900"
                 >
-                  Policy text
+                  Section message
                 </label>
                 <textarea
                   id="policyText"
@@ -229,12 +257,15 @@ export default async function AdminContentPage({
 
           <details className="rounded-2xl border border-zinc-200 bg-zinc-50">
             <summary className="disclosure-summary cursor-pointer list-none px-4 py-3 text-sm font-semibold text-zinc-900">
-              <span>FAQ</span>
+              <span>Frequently asked questions</span>
               <span aria-hidden="true" className="disclosure-chevron">
                 ▸
               </span>
             </summary>
             <div className="space-y-4 border-t border-zinc-200 bg-white p-4">
+              <p className="text-sm text-zinc-600">
+                These answers appear under the homepage details section.
+              </p>
               {content.faqs.map((faqItem, index) => (
                 <div
                   key={faqItem.id}
@@ -244,7 +275,7 @@ export default async function AdminContentPage({
                     htmlFor={`faqQuestion${index + 1}`}
                     className="block text-sm font-medium text-zinc-900"
                   >
-                    FAQ question {index + 1}
+                    Question {index + 1}
                   </label>
                   <input
                     id={`faqQuestion${index + 1}`}
@@ -259,7 +290,7 @@ export default async function AdminContentPage({
                     htmlFor={`faqAnswer${index + 1}`}
                     className="block text-sm font-medium text-zinc-900"
                   >
-                    FAQ answer {index + 1}
+                    Answer {index + 1}
                   </label>
                   <textarea
                     id={`faqAnswer${index + 1}`}
@@ -278,8 +309,9 @@ export default async function AdminContentPage({
             type="submit"
             className="inline-flex min-h-11 w-full items-center justify-center rounded-full bg-zinc-900 px-6 py-3 text-sm font-medium text-white transition-colors hover:bg-zinc-700 sm:w-auto"
           >
-            Save homepage content
+            Save all homepage changes
           </button>
+
         </form>
       </article>
     </PageShell>
