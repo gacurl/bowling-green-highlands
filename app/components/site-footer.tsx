@@ -18,6 +18,16 @@ export function SiteFooter() {
               </Link>
             </li>
             <li>
+              <a
+                href="https://www.facebook.com/p/Bowling-Green-Highlands-61586487172307/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-slate-300 hover:text-white"
+              >
+                Facebook
+              </a>
+            </li>
+            <li>
               <Link href="/admin/login" className="text-slate-400 hover:text-slate-300">
                 Farm Office
               </Link>
