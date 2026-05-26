@@ -1,6 +1,15 @@
 import Link from "next/link";
+import { cookies } from "next/headers";
+import { shouldShowAdminNavigation } from "../lib/admin-navigation";
+import { ADMIN_SESSION_COOKIE_NAME } from "../lib/admin-session";
 
-export function SiteHeader() {
+export async function SiteHeader() {
+  const cookieStore = await cookies();
+  const showAdminNavigation = await shouldShowAdminNavigation(
+    cookieStore.get(ADMIN_SESSION_COOKIE_NAME)?.value,
+    process.env.ADMIN_PASSWORD,
+  );
+
   return (
     <header className="border-b border-[#94A378]/40 bg-[#2D3C59]">
       <div className="mx-auto flex w-full max-w-5xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:gap-4 sm:px-6 sm:py-4">
@@ -11,9 +20,11 @@ export function SiteHeader() {
           <Link className="text-[#94A378] hover:text-[#E5BA41]" href="/reserve">
             Reserve
           </Link>
-          <Link className="text-[#94A378] hover:text-[#E5BA41]" href="/admin">
-            Admin
-          </Link>
+          {showAdminNavigation ? (
+            <Link className="text-[#94A378] hover:text-[#E5BA41]" href="/admin">
+              Admin
+            </Link>
+          ) : null}
         </nav>
       </div>
     </header>
