@@ -30,6 +30,14 @@ export default async function AdminPage() {
       description="Pick a date to set availability, then review pending requests."
       action={
         <div className="flex flex-wrap gap-3">
+          <form action="/admin/logout" method="post">
+            <button
+              type="submit"
+              className="inline-flex min-h-11 items-center justify-center rounded-full border border-zinc-300 bg-white px-6 py-3 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-100"
+            >
+              Log out
+            </button>
+          </form>
           <Link
             href="/admin/content"
             className="inline-flex min-h-11 items-center justify-center rounded-full border border-zinc-300 bg-white px-6 py-3 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-100"
