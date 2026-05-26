@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { PageShell } from "../components/page-shell";
 
 export default function AboutPage() {
@@ -17,6 +18,18 @@ export default function AboutPage() {
         </Link>
       }
     >
+      <section className="overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-sm">
+        <div className="relative aspect-[16/9] w-full">
+          <Image
+            src="/images/about-barn-pasture.jpg"
+            alt="Red barn and fenced pasture at Bowling Green Highlands."
+            fill
+            className="object-cover object-center"
+            sizes="(max-width: 640px) 100vw, (max-width: 1024px) 90vw, 960px"
+          />
+        </div>
+      </section>
+
       <section className="rounded-3xl border border-zinc-200 bg-white p-4 shadow-sm sm:p-6">
         <p className="text-sm text-zinc-700 sm:text-base">
           We keep the process simple: request an available date, then we follow up
