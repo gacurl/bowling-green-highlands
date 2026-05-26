@@ -17,6 +17,11 @@ export function SiteFooter() {
                 Policy
               </Link>
             </li>
+            <li>
+              <Link href="/admin/login" className="text-slate-400 hover:text-slate-300">
+                Farm Office
+              </Link>
+            </li>
           </ul>
         </nav>
       </div>
