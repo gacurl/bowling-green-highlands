@@ -20,12 +20,22 @@ export default async function AdminContentPage({
       title="Homepage Content"
       description="Edit what guests read on the homepage, then save."
       action={
-        <Link
-          href="/admin"
-          className="inline-flex min-h-11 w-full items-center justify-center rounded-full bg-zinc-900 px-6 py-3 text-sm font-medium text-white transition-colors hover:bg-zinc-700 sm:w-auto"
-        >
-          Back to admin
-        </Link>
+        <div className="flex flex-wrap gap-3">
+          <form action="/admin/logout" method="post">
+            <button
+              type="submit"
+              className="inline-flex min-h-11 w-full items-center justify-center rounded-full border border-zinc-300 bg-white px-6 py-3 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-100 sm:w-auto"
+            >
+              Log out
+            </button>
+          </form>
+          <Link
+            href="/admin"
+            className="inline-flex min-h-11 w-full items-center justify-center rounded-full bg-zinc-900 px-6 py-3 text-sm font-medium text-white transition-colors hover:bg-zinc-700 sm:w-auto"
+          >
+            Back to admin
+          </Link>
+        </div>
       }
     >
       <article className="rounded-3xl border border-zinc-200 bg-white p-4 shadow-sm sm:p-6">

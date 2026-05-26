@@ -41,7 +41,7 @@ What this does not do yet:
 - no payments
 - no database-backed persistence layer
 - no submission list or admin dashboard
-- no auth system
+- no public account system
 
 ## Operator Availability Persistence (Current MVP)
 
@@ -118,6 +118,9 @@ The app currently expects these variables in `.env.local`:
 - `EMAIL_FROM`
   Sender identity used when the app forwards reservation requests.
   Example: `reservations@example.com`
+- `ADMIN_PASSWORD`
+  Password required for admin session access to `/admin` routes.
+  Example: `change-this-admin-password`
 
 See [.env.example](/Users/gacurl/IdeaProjects/bowling-green-highlands/.env.example)
 for the current starter values.
@@ -131,7 +134,9 @@ for the current starter values.
 - `/confirmation`
   Confirmation page that explains the request was submitted for operator review.
 - `/admin`
-  Operator day-level availability calendar.
+  Operator day-level availability calendar (requires admin login).
+- `/admin/login`
+  Admin login screen used to establish the operator session.
 
 ## Development Notes
 
