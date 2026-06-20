@@ -6,6 +6,7 @@ import {
   CONFIRMATION_COOKIE_MAX_AGE_SECONDS,
   CONFIRMATION_COOKIE_NAME,
   createConfirmationStateCookieValue,
+  getConfirmationCookieSecret,
 } from "../../lib/confirmation-state";
 import { sendReservationRequestEmail } from "../../lib/reservation-email";
 
@@ -33,16 +34,6 @@ function isValidEmail(value: string) {
   return BASIC_EMAIL_PATTERN.test(value);
 }
 
-function getConfirmationSigningSecret() {
-  const signingSecret = process.env.SMTP_URL?.trim();
-
-  if (!signingSecret) {
-    throw new Error("Missing confirmation signing secret");
-  }
-
-  return signingSecret;
-}
-
 export async function POST(request: Request) {
   const formData = await request.formData();
 
@@ -65,6 +56,15 @@ export async function POST(request: Request) {
 
     if (!normalizedEventType) {
       throw new Error("Invalid event type");
+    }
+
+    const confirmationCookieSecret = getConfirmationCookieSecret();
+
+    if (!confirmationCookieSecret) {
+      return NextResponse.redirect(
+        new URL(DELIVERY_ERROR_QUERY, request.url),
+        { status: 303 },
+      );
     }
 
     try {
@@ -116,7 +116,7 @@ export async function POST(request: Request) {
           requestedDates,
           requestNotes,
         },
-        getConfirmationSigningSecret(),
+        confirmationCookieSecret,
       ),
       {
         httpOnly: true,

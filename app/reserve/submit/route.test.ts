@@ -59,12 +59,15 @@ function readRedirectPath(response: Response) {
 function withEnvironment(runTest: () => Promise<void> | void) {
   return async () => {
     const previousContactEmail = process.env.CONTACT_EMAIL;
+    const previousConfirmationCookieSecret =
+      process.env.CONFIRMATION_COOKIE_SECRET;
     const previousEmailFrom = process.env.EMAIL_FROM;
     const previousSmtpUrl = process.env.SMTP_URL;
 
     process.env.CONTACT_EMAIL = "operator@example.com";
+    process.env.CONFIRMATION_COOKIE_SECRET = "test-confirmation-cookie-secret";
     process.env.EMAIL_FROM = "reservations@example.com";
-    process.env.SMTP_URL = "smtp://test-signing-secret";
+    process.env.SMTP_URL = "smtp://test-smtp-url";
 
     try {
       await runTest();
@@ -79,6 +82,12 @@ function withEnvironment(runTest: () => Promise<void> | void) {
         delete process.env.EMAIL_FROM;
       } else {
         process.env.EMAIL_FROM = previousEmailFrom;
+      }
+
+      if (previousConfirmationCookieSecret === undefined) {
+        delete process.env.CONFIRMATION_COOKIE_SECRET;
+      } else {
+        process.env.CONFIRMATION_COOKIE_SECRET = previousConfirmationCookieSecret;
       }
 
       if (previousSmtpUrl === undefined) {
@@ -161,7 +170,10 @@ test(
       assert.equal(readRedirectPath(response), "/confirmation");
       assert.match(cookie, new RegExp(`${CONFIRMATION_COOKIE_NAME}=`));
       assert.deepEqual(
-        readConfirmationStateCookieValue(cookieValue, process.env.SMTP_URL),
+        readConfirmationStateCookieValue(
+          cookieValue,
+          process.env.CONFIRMATION_COOKIE_SECRET,
+        ),
         {
           contactEmail: "operator@example.com",
           eventType: "farm_stay",
@@ -171,6 +183,11 @@ test(
           requestNotes: "Please call first.",
         },
       );
+      assert.equal(
+        readConfirmationStateCookieValue(cookieValue, process.env.SMTP_URL),
+        null,
+      );
+      assert.match(cookie, /Max-Age=300/);
       assert.equal(sentEmails.length, 1);
       assert.equal(sentEmails[0].to, "operator@example.com");
       assert.equal(sentEmails[0].replyTo, "guest@example.com");
@@ -221,6 +238,39 @@ test(
       const reservationRequests = await readReservationRequests();
 
       assert.equal(reservationRequests.length, 1);
+    }),
+  ),
+);
+
+test(
+  "missing production confirmation cookie secret fails safely before email delivery",
+  withAvailabilityStore(
+    withEnvironment(async () => {
+      const previousNodeEnv = process.env.NODE_ENV;
+
+      process.env.NODE_ENV = "production";
+      delete process.env.CONFIRMATION_COOKIE_SECRET;
+
+      try {
+        await setOperatorDateAvailability(RESERVE_EXAMPLE_DATE, "available");
+
+        const sentEmails: SentEmail[] = [];
+        mockEmailTransport(sentEmails);
+
+        const response = await POST(createReservationRequest());
+
+        assert.equal(response.status, 303);
+        assert.equal(readRedirectPath(response), "/reserve?error=delivery");
+        assert.equal(response.headers.get("set-cookie"), null);
+        assert.equal(sentEmails.length, 0);
+        assert.deepEqual(await readReservationRequests(), []);
+      } finally {
+        if (previousNodeEnv === undefined) {
+          delete process.env.NODE_ENV;
+        } else {
+          process.env.NODE_ENV = previousNodeEnv;
+        }
+      }
     }),
   ),
 );
@@ -467,7 +517,10 @@ test(
       assert.equal(response.status, 303);
       assert.equal(readRedirectPath(response), "/confirmation");
       assert.deepEqual(
-        readConfirmationStateCookieValue(cookieValue, process.env.SMTP_URL),
+        readConfirmationStateCookieValue(
+          cookieValue,
+          process.env.CONFIRMATION_COOKIE_SECRET,
+        ),
         {
           contactEmail: "operator@example.com",
           eventType: "farm_stay",
