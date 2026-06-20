@@ -3,6 +3,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 
 export const CONFIRMATION_COOKIE_NAME = "bgh_confirmation_request";
 export const CONFIRMATION_COOKIE_MAX_AGE_SECONDS = 5 * 60;
+export const CONFIRMATION_COOKIE_SECRET_ENV_NAME = "CONFIRMATION_COOKIE_SECRET";
 
 export type ConfirmationState = {
   contactEmail: string;
@@ -55,6 +56,16 @@ function signaturesMatch(signature: string, expectedSignature: string) {
   );
 }
 
+export function getConfirmationCookieSecret() {
+  const signingSecret = process.env[CONFIRMATION_COOKIE_SECRET_ENV_NAME]?.trim();
+
+  if (!signingSecret) {
+    return null;
+  }
+
+  return signingSecret;
+}
+
 export function createConfirmationStateCookieValue(
   state: ConfirmationState,
   signingSecret: string,
@@ -75,7 +86,7 @@ export function createConfirmationStateCookieValue(
 
 export function readConfirmationStateCookieValue(
   cookieValue: string | undefined,
-  signingSecret: string | undefined,
+  signingSecret: string | null | undefined,
 ) {
   if (!cookieValue) {
     return null;

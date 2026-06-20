@@ -5,6 +5,7 @@ import { PageShell } from "../components/page-shell";
 import { getEventTypeLabel } from "../lib/event-type";
 import {
   CONFIRMATION_COOKIE_NAME,
+  getConfirmationCookieSecret,
   readConfirmationStateCookieValue,
 } from "../lib/confirmation-state";
 
@@ -12,7 +13,7 @@ export default async function ConfirmationPage() {
   const cookieStore = await cookies();
   const confirmationState = readConfirmationStateCookieValue(
     cookieStore.get(CONFIRMATION_COOKIE_NAME)?.value,
-    process.env.SMTP_URL,
+    getConfirmationCookieSecret(),
   );
   const hasConfirmedRequest = confirmationState !== null;
 
