@@ -1,24 +1,13 @@
 import { PageShell } from "../../components/page-shell";
+import { getAdminLoginErrorMessage } from "../../lib/operational-error-messages";
 
 type AdminLoginPageProps = {
   searchParams?: Promise<{ error?: string; next?: string }>;
 };
 
-function getErrorMessage(error: string | undefined) {
-  if (error === "invalid_password") {
-    return "Password did not match. Try again.";
-  }
-
-  if (error === "not_configured") {
-    return "Admin password is not configured. Set ADMIN_PASSWORD in your environment.";
-  }
-
-  return null;
-}
-
 export default async function AdminLoginPage({ searchParams }: AdminLoginPageProps) {
   const resolvedSearchParams = searchParams ? await searchParams : {};
-  const errorMessage = getErrorMessage(resolvedSearchParams.error);
+  const errorMessage = getAdminLoginErrorMessage(resolvedSearchParams.error);
   const next = resolvedSearchParams.next ?? "/admin";
 
   return (

@@ -1,7 +1,9 @@
 import Link from "next/link";
+import type { OperatorAvailability } from "../../lib/operator-availability";
 import { readOperatorAvailability } from "../../lib/operator-availability";
 import { readReservationRequests } from "../lib/reservation-requests";
 import { toReservationRequestListItems } from "../lib/reservation-request-list";
+import { getAdminActionErrorMessage } from "../lib/operational-error-messages";
 import {
   getReservationRequestStatusBadgeClass,
   getReservationRequestStatusLabel,
@@ -9,16 +11,39 @@ import {
 import { MonthCalendar } from "./month-calendar";
 import { PageShell } from "../components/page-shell";
 
-export default async function AdminPage() {
+type AdminPageProps = {
+  searchParams?: Promise<{ error?: string }>;
+};
+
+export default async function AdminPage({ searchParams }: AdminPageProps) {
+  const resolvedSearchParams = searchParams ? await searchParams : {};
+  const actionErrorMessage = getAdminActionErrorMessage(
+    resolvedSearchParams.error,
+  );
   const today = new Date();
   const todayIso = [
     today.getFullYear(),
     String(today.getMonth() + 1).padStart(2, "0"),
     String(today.getDate()).padStart(2, "0"),
   ].join("-");
-  const initialAvailability = await readOperatorAvailability();
-  const reservationRequests = await readReservationRequests();
-  const requestListItems = toReservationRequestListItems(reservationRequests);
+  const [availabilityResult, reservationRequestsResult] = await Promise.allSettled([
+    readOperatorAvailability(),
+    readReservationRequests(),
+  ]);
+  const initialAvailability: OperatorAvailability | null =
+    availabilityResult.status === "fulfilled" ? availabilityResult.value : null;
+  const requestListItems =
+    reservationRequestsResult.status === "fulfilled"
+      ? toReservationRequestListItems(reservationRequestsResult.value)
+      : [];
+  const availabilityLoadError =
+    availabilityResult.status === "rejected"
+      ? getAdminActionErrorMessage("availability_load")
+      : null;
+  const requestsLoadError =
+    reservationRequestsResult.status === "rejected"
+      ? getAdminActionErrorMessage("requests_load")
+      : null;
   const pendingCount = requestListItems.filter(
     (requestListItem) => requestListItem.status === "pending",
   ).length;
@@ -53,10 +78,43 @@ export default async function AdminPage() {
         </div>
       }
     >
-      <MonthCalendar
-        initialAvailability={initialAvailability}
-        todayIso={todayIso}
-      />
+      <div className="space-y-4">
+        {actionErrorMessage ? (
+          <p
+            role="alert"
+            className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+          >
+            <span className="block font-medium">{actionErrorMessage.title}</span>
+            <span>{actionErrorMessage.body}</span>
+          </p>
+        ) : null}
+        {availabilityLoadError ? (
+          <p
+            role="alert"
+            className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+          >
+            <span className="block font-medium">
+              {availabilityLoadError.title}
+            </span>
+            <span>{availabilityLoadError.body}</span>
+          </p>
+        ) : null}
+        {requestsLoadError ? (
+          <p
+            role="alert"
+            className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+          >
+            <span className="block font-medium">{requestsLoadError.title}</span>
+            <span>{requestsLoadError.body}</span>
+          </p>
+        ) : null}
+        {initialAvailability ? (
+          <MonthCalendar
+            initialAvailability={initialAvailability}
+            todayIso={todayIso}
+          />
+        ) : null}
+      </div>
       <details className="mt-6 rounded-3xl border border-zinc-200 bg-white p-4 shadow-sm sm:p-6">
         <summary className="cursor-pointer list-none">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -84,7 +142,12 @@ export default async function AdminPage() {
             </div>
           </div>
         </summary>
-        {requestListItems.length === 0 ? (
+        {reservationRequestsResult.status === "rejected" ? (
+          <p className="mt-5 rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600">
+            Reservation requests are unavailable right now. Refresh before
+            reviewing or changing request status.
+          </p>
+        ) : requestListItems.length === 0 ? (
           <p className="mt-5 rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600">
             No reservation requests submitted yet.
           </p>

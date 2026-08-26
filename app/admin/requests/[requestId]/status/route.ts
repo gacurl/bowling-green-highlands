@@ -21,7 +21,13 @@ export async function POST(request: Request, { params }: StatusRouteProps) {
     redirect(`/admin/requests/${requestId}?error=invalid_status`);
   }
 
-  const updateResult = await updateReservationRequestStatus(requestId, statusValue);
+  let updateResult: Awaited<ReturnType<typeof updateReservationRequestStatus>>;
+
+  try {
+    updateResult = await updateReservationRequestStatus(requestId, statusValue);
+  } catch {
+    redirect(`/admin/requests/${requestId}?error=action_failed`);
+  }
 
   if (updateResult === "not_found") {
     redirect("/admin?error=request_not_found");

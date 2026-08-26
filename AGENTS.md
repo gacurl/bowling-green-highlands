@@ -27,7 +27,7 @@ All implementation decisions must preserve:
 - operator-controlled availability
 - low cognitive load
 - MVP-first simplicity
-- one primary action per screen
+- one primary action per screen`
 
 ---
 

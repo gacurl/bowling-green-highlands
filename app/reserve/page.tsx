@@ -5,6 +5,7 @@ import {
 } from "../../lib/reserve-example-availability";
 import { formatRequestedSlotValue } from "../../lib/requested-slot";
 import { EVENT_TYPE_OPTIONS } from "../lib/event-type";
+import { getReserveErrorMessage } from "../lib/operational-error-messages";
 import { PageShell } from "../components/page-shell";
 
 export const dynamic = "force-dynamic";
@@ -17,8 +18,7 @@ type ReservePageProps = {
 
 export default async function ReservePage({ searchParams }: ReservePageProps) {
   const params = await searchParams;
-  const hasValidationError = params.error === "validation";
-  const hasDeliveryError = params.error === "delivery";
+  const errorMessage = getReserveErrorMessage(params.error);
   const availableSlots = await getReserveExampleSlots();
   const hasSelectableSlots = availableSlots.some(
     (slot) => slot.status === "available",
@@ -60,22 +60,13 @@ export default async function ReservePage({ searchParams }: ReservePageProps) {
       }
     >
       <div className="space-y-4">
-        {hasValidationError ? (
+        {errorMessage ? (
           <p
             role="alert"
             className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
           >
-            The request could not be sent. Check your name, email, and
-            selected time, then try again.
-          </p>
-        ) : null}
-        {hasDeliveryError ? (
-          <p
-            role="alert"
-            className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
-          >
-            The request could not be forwarded right now. Please try again in a
-            moment.
+            <span className="block font-medium">{errorMessage.title}</span>
+            <span>{errorMessage.body}</span>
           </p>
         ) : null}
         <form

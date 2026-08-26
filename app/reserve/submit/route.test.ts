@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import nodemailer from "nodemailer";
-import { mkdtemp } from "node:fs/promises";
+import { chmod, mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { POST } from "./route";
@@ -243,7 +243,49 @@ test(
 );
 
 test(
-  "missing production confirmation cookie secret fails safely before email delivery",
+  "reservation persistence failures explain that the request was not saved",
+  withAvailabilityStore(
+    withEnvironment(async () => {
+      const previousRequestStorePath =
+        process.env.BGH_RESERVATION_REQUESTS_STORE_PATH;
+      const directory = await mkdtemp(path.join(tmpdir(), "bgh-request-fail-"));
+      const unwritableDirectory = path.join(directory, "unwritable");
+      const unwritableStorePath = path.join(
+        unwritableDirectory,
+        "reservation-requests.json",
+      );
+
+      await chmod(directory, 0o500);
+      process.env.BGH_RESERVATION_REQUESTS_STORE_PATH = unwritableStorePath;
+
+      try {
+        await setOperatorDateAvailability(RESERVE_EXAMPLE_DATE, "available");
+
+        const sentEmails: SentEmail[] = [];
+        mockEmailTransport(sentEmails);
+
+        const response = await POST(createReservationRequest());
+
+        assert.equal(response.status, 303);
+        assert.equal(readRedirectPath(response), "/reserve?error=persistence");
+        assert.equal(response.headers.get("set-cookie"), null);
+        assert.equal(sentEmails.length, 0);
+      } finally {
+        await chmod(directory, 0o700);
+
+        if (previousRequestStorePath === undefined) {
+          delete process.env.BGH_RESERVATION_REQUESTS_STORE_PATH;
+        } else {
+          process.env.BGH_RESERVATION_REQUESTS_STORE_PATH =
+            previousRequestStorePath;
+        }
+      }
+    }),
+  ),
+);
+
+test(
+  "missing production confirmation cookie secret explains that the request was not saved",
   withAvailabilityStore(
     withEnvironment(async () => {
       const previousNodeEnv = process.env.NODE_ENV;
@@ -260,7 +302,7 @@ test(
         const response = await POST(createReservationRequest());
 
         assert.equal(response.status, 303);
-        assert.equal(readRedirectPath(response), "/reserve?error=delivery");
+        assert.equal(readRedirectPath(response), "/reserve?error=configuration");
         assert.equal(response.headers.get("set-cookie"), null);
         assert.equal(sentEmails.length, 0);
         assert.deepEqual(await readReservationRequests(), []);
