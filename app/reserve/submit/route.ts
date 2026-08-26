@@ -11,6 +11,8 @@ import {
 import { sendReservationRequestEmail } from "../../lib/reservation-email";
 
 const BASIC_EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const CONFIGURATION_ERROR_QUERY = "/reserve?error=configuration";
+const PERSISTENCE_ERROR_QUERY = "/reserve?error=persistence";
 const VALIDATION_ERROR_QUERY = "/reserve?error=validation";
 const DELIVERY_ERROR_QUERY = "/reserve?error=delivery";
 
@@ -62,7 +64,7 @@ export async function POST(request: Request) {
 
     if (!confirmationCookieSecret) {
       return NextResponse.redirect(
-        new URL(DELIVERY_ERROR_QUERY, request.url),
+        new URL(CONFIGURATION_ERROR_QUERY, request.url),
         { status: 303 },
       );
     }
@@ -77,7 +79,7 @@ export async function POST(request: Request) {
       });
     } catch {
       return NextResponse.redirect(
-        new URL(DELIVERY_ERROR_QUERY, request.url),
+        new URL(PERSISTENCE_ERROR_QUERY, request.url),
         { status: 303 },
       );
     }

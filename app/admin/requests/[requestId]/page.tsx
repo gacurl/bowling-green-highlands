@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { PageShell } from "../../../components/page-shell";
+import { getRequestStatusErrorMessage } from "../../../lib/operational-error-messages";
 import { toReservationRequestDetailItem } from "../../../lib/reservation-request-detail";
 import {
   getReservationRequestStatusBadgeClass,
@@ -19,7 +20,7 @@ export default async function RequestDetailPage({
 }: RequestDetailPageProps) {
   const { requestId } = await params;
   const resolvedSearchParams = searchParams ? await searchParams : {};
-  const error = resolvedSearchParams.error;
+  const errorMessage = getRequestStatusErrorMessage(resolvedSearchParams.error);
   const reservationRequests = await readReservationRequests();
   const requestDetail = toReservationRequestDetailItem(
     reservationRequests,
@@ -108,28 +109,13 @@ export default async function RequestDetailPage({
             <dd>{requestDetail.id}</dd>
           </div>
         </dl>
-        {error === "invalid_status" ? (
+        {errorMessage ? (
           <p
             role="alert"
             className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
           >
-            Invalid status update. Try again.
-          </p>
-        ) : null}
-        {error === "invalid_transition" ? (
-          <p
-            role="alert"
-            className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
-          >
-            This request status is already set.
-          </p>
-        ) : null}
-        {error === "slot_conflict" ? (
-          <p
-            role="alert"
-            className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
-          >
-            Another request is already accepted for this slot.
+            <span className="block font-medium">{errorMessage.title}</span>
+            <span>{errorMessage.body}</span>
           </p>
         ) : null}
         {requestDetail.status === "pending" ? (

@@ -293,8 +293,17 @@ export function MonthCalendar({
               Mark selected available
             </button>
             {saveError ? (
-              <p className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                Availability could not be saved. Try the change again.
+              <p
+                role="alert"
+                className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+              >
+                <span className="block font-medium">
+                  Availability could not be saved.
+                </span>
+                <span>
+                  No availability changes were saved. Try again, or refresh
+                  admin before changing more dates.
+                </span>
               </p>
             ) : null}
           </div>

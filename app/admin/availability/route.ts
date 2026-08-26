@@ -19,7 +19,10 @@ export async function POST(request: Request) {
       (body.mode !== "available" && body.mode !== "unavailable")
     ) {
       return NextResponse.json(
-        { error: "Invalid availability update" },
+        {
+          error:
+            "Availability could not be saved. No availability changes were saved.",
+        },
         { status: 400 },
       );
     }
@@ -32,7 +35,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ availability });
   } catch {
     return NextResponse.json(
-      { error: "Availability could not be saved" },
+      {
+        error:
+          "Availability could not be saved. No availability changes were saved.",
+      },
       { status: 500 },
     );
   }

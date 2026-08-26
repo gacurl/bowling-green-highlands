@@ -11,6 +11,11 @@
     "target": "ES2022",
     "types": ["node"]
   },
-  "include": ["lib/**/*.ts", "app/lib/**/*.ts", "app/reserve/submit/**/*.ts"],
+  "include": [
+    "lib/**/*.ts",
+    "app/admin/**/*.ts",
+    "app/lib/**/*.ts",
+    "app/reserve/submit/**/*.ts"
+  ],
   "exclude": ["node_modules", ".next", ".test-build"]
 }
