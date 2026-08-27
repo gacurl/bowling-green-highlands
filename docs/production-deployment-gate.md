@@ -13,24 +13,32 @@ Vercel remains responsible for the production deployment that is created after c
 
 ## Required Pull Request Checks
 
-Before merging to `main`, the pull request should have passing checks for:
+Before merging to `main`, branch protection requires passing checks for:
 
-- `CI / build`
+- `build`
   - installs dependencies with `npm ci`
   - runs `npm test`
   - runs `npm run build`
   - runs `npm run lint --if-present`
-- `CodeQL / Analyze`
+- `Analyze (javascript-typescript)`
   - runs JavaScript/TypeScript CodeQL analysis
-- `Dependency Review / dependency-review`
+- `dependency-review`
   - reviews dependency changes on pull requests to `main`
-- `Security / Trivy Security`
+- `Trivy Security`
   - scans the repository filesystem and Node dependency surface with Trivy
   - fails on `MEDIUM`, `HIGH`, and `CRITICAL`
   - does not fail solely on `LOW`
+- `Vercel`
+  - confirms the Vercel deployment check passed
 
-Vercel preview checks should also pass before merge when Vercel reports them on the pull request.
-Confirm the exact GitHub check names from the pull request UI before configuring required checks.
+## Branch Protection Enforcement
+
+The `main` branch is protected by GitHub branch protection:
+
+- strict branch synchronization: ON
+- administrator enforcement: ON
+- force pushes: BLOCKED
+- branch deletion: BLOCKED
 
 ## Merge and Production Deployment
 
@@ -67,11 +75,3 @@ If a security finding requires dependency, persistence, auth, payment, or infras
 If the Vercel production deployment from `main` fails, do not build a parallel deployment path from GitHub Actions.
 Use the Vercel deployment logs to identify the failing build or runtime configuration and fix the smallest repository or Vercel setting needed.
 If the failure involves production data protection, backup, or restore planning, reference Issue #110 for backup and recovery instead of duplicating recovery procedures here.
-
-## Enforcement Limitation
-
-GitHub-side required-check enforcement is not currently configured.
-Repository rulesets are absent, and classic branch protection for `main` is not configured.
-
-After this workflow runs on a pull request, configure GitHub branch protection or a repository ruleset separately using the confirmed check names.
-Until that external GitHub configuration is enabled, this repository provides the checks but does not force GitHub to block merges.
