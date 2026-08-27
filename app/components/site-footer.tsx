@@ -1,4 +1,7 @@
 import Link from "next/link";
+import packageJson from "../../package.json";
+
+const appVersion = packageJson.version;
 
 export function SiteFooter() {
   return (
@@ -31,6 +34,9 @@ export function SiteFooter() {
               <Link href="/admin/login" className="text-slate-400 hover:text-slate-300">
                 Farm Office
               </Link>
+            </li>
+            <li className="text-slate-500" aria-label={`Application version ${appVersion}`}>
+              v{appVersion}
             </li>
           </ul>
         </nav>
