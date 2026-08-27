@@ -144,3 +144,15 @@ for the current starter values.
 - Reservation requests are forwarded by the app on the server using SMTP.
 - If validation fails or email delivery fails, the user is returned to
   `/reserve?error=1` with a plain recovery message.
+
+## Application Versioning
+
+`package.json` is the authoritative application version source. Versions follow
+Semantic Versioning:
+
+- `PATCH`: backward-compatible fix
+- `MINOR`: backward-compatible feature
+- `MAJOR`: intentional incompatible product or system change
+
+Release tags use `vX.Y.Z` and are created from the intended release commit on
+`main`, not from an issue branch.
