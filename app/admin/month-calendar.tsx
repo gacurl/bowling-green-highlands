@@ -222,7 +222,13 @@ export function MonthCalendar({
                 cell.dayNumber === null
                   ? "border-transparent bg-transparent"
                   : isSelected
-                    ? "border-[#E5BA41] bg-[#2D3C59] text-white ring-2 ring-[#E5BA41]"
+                    ? isToday
+                      ? isBlocked
+                        ? "border-[#E5BA41] bg-zinc-900 text-white shadow-lg ring-4 ring-[#E5BA41] ring-offset-2 ring-offset-white"
+                        : "border-[#E5BA41] bg-emerald-600 text-white shadow-lg ring-4 ring-[#E5BA41] ring-offset-2 ring-offset-white"
+                      : isBlocked
+                        ? "border-[#E5BA41] bg-zinc-300 text-zinc-900 shadow-lg ring-4 ring-[#E5BA41] ring-offset-2 ring-offset-white"
+                        : "border-[#E5BA41] bg-emerald-100 text-zinc-900 shadow-lg ring-4 ring-[#E5BA41] ring-offset-2 ring-offset-white"
                     : isToday
                     ? isBlocked
                       ? "border-zinc-900 bg-zinc-900 text-white"
