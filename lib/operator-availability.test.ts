@@ -50,6 +50,25 @@ test("persists an explicitly available date", async () => {
   assert.equal(isDateAvailable(availability, "2026-06-14"), true);
 });
 
+test("rejects invalid availability modes without changing persisted state", async () => {
+  const storePath = await createStorePath();
+
+  await setOperatorDateAvailability("2026-06-14", "available", storePath);
+
+  await assert.rejects(
+    setOperatorDateAvailability(
+      "2026-06-14",
+      "blocked" as never,
+      storePath,
+    ),
+    /Invalid availability mode/,
+  );
+
+  const availability = await readOperatorAvailability(storePath);
+
+  assert.equal(isDateAvailable(availability, "2026-06-14"), true);
+});
+
 test("normalizes persisted availability dates", async () => {
   const storePath = await createStorePath();
 

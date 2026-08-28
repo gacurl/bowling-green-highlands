@@ -158,6 +158,10 @@ export async function setOperatorDateAvailability(
     throw new Error("Invalid availability date");
   }
 
+  if (!isOperatorAvailabilityMode(mode)) {
+    throw new Error("Invalid availability mode");
+  }
+
   const currentAvailability = await readOperatorAvailability(storePath);
   const nextAvailability = { ...currentAvailability };
 
