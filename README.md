@@ -156,3 +156,6 @@ Semantic Versioning:
 
 Release tags use `vX.Y.Z` and are created from the intended release commit on
 `main`, not from an issue branch.
+
+Production behavior changes include the appropriate Semantic Version bump in the
+same issue before merge.
