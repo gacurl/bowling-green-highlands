@@ -5,18 +5,18 @@ const appVersion = packageJson.version;
 
 export function SiteFooter() {
   return (
-    <footer className="border-t border-[#94A378]/40 bg-[#2D3C59]">
-      <div className="mx-auto flex w-full max-w-5xl flex-col gap-2 px-6 py-4 text-sm text-slate-300 sm:flex-row sm:items-center sm:justify-between">
+    <footer className="border-t border-[#94A378]/50 bg-[#2F4A35]">
+      <div className="mx-auto flex w-full max-w-5xl flex-col gap-2 px-6 py-4 text-sm text-[#EDE4D4] sm:flex-row sm:items-center sm:justify-between">
         <p>Requests are reviewed before dates are confirmed.</p>
         <nav aria-label="Footer">
           <ul className="flex items-center gap-4">
             <li>
-              <Link href="/pricing" className="text-slate-200 hover:text-white">
+              <Link href="/pricing" className="text-[#F6F0E6] hover:text-white">
                 Pricing
               </Link>
             </li>
             <li>
-              <Link href="/policy" className="text-slate-200 hover:text-white">
+              <Link href="/policy" className="text-[#F6F0E6] hover:text-white">
                 Policy
               </Link>
             </li>
@@ -25,17 +25,17 @@ export function SiteFooter() {
                 href="https://www.facebook.com/p/Bowling-Green-Highlands-61586487172307/"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-slate-300 hover:text-white"
+                className="text-[#EDE4D4] hover:text-white"
               >
                 Facebook
               </a>
             </li>
             <li>
-              <Link href="/admin/login" className="text-slate-400 hover:text-slate-300">
+              <Link href="/admin/login" className="text-[#CFC3AE] hover:text-[#EDE4D4]">
                 Farm Office
               </Link>
             </li>
-            <li className="text-slate-500" aria-label={`Application version ${appVersion}`}>
+            <li className="text-[#AFA28D]" aria-label={`Application version ${appVersion}`}>
               v{appVersion}
             </li>
           </ul>

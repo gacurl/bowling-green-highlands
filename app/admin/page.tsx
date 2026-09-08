@@ -58,20 +58,20 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
           <form action="/admin/logout" method="post">
             <button
               type="submit"
-              className="inline-flex min-h-11 items-center justify-center rounded-full border border-zinc-300 bg-white px-6 py-3 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-100"
+              className="inline-flex min-h-11 items-center justify-center rounded-full border border-[#CFC3AE] bg-[#FDF8EF] px-6 py-3 text-sm font-medium text-[#2B2922] transition-colors hover:bg-[#F6F0E6]"
             >
               Log out
             </button>
           </form>
           <Link
             href="/admin/content"
-            className="inline-flex min-h-11 items-center justify-center rounded-full border border-zinc-300 bg-white px-6 py-3 text-sm font-medium text-zinc-900 transition-colors hover:bg-zinc-100"
+            className="inline-flex min-h-11 items-center justify-center rounded-full border border-[#CFC3AE] bg-[#FDF8EF] px-6 py-3 text-sm font-medium text-[#2B2922] transition-colors hover:bg-[#F6F0E6]"
           >
             Edit homepage content
           </Link>
           <Link
             href="/"
-            className="inline-flex min-h-11 items-center justify-center rounded-full bg-zinc-900 px-6 py-3 text-sm font-medium text-white transition-colors hover:bg-zinc-700"
+            className="inline-flex min-h-11 items-center justify-center rounded-full bg-[#2F4A35] px-6 py-3 text-sm font-medium text-[#FFF8EA] transition-colors hover:bg-[#B86748]"
           >
             Return to landing
           </Link>
@@ -115,26 +115,26 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
           />
         ) : null}
       </div>
-      <details className="mt-6 rounded-3xl border border-zinc-200 bg-white p-4 shadow-sm sm:p-6">
+      <details className="mt-6 rounded-3xl border border-[#D8CDBA] bg-[#FDF8EF] p-4 shadow-sm sm:p-6">
         <summary className="cursor-pointer list-none">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h2 className="text-lg font-semibold text-zinc-900 sm:text-xl">
+              <h2 className="text-lg font-semibold text-[#2B2922] sm:text-xl">
                 Reservation requests
               </h2>
-              <p className="text-sm text-zinc-600">
+              <p className="text-sm text-[#5F604E]">
                 Pending requests need action. Accepted and declined are read-only.
               </p>
             </div>
             <div className="flex items-center gap-2 self-start sm:self-auto">
-              <span className="rounded-full border border-zinc-300 bg-zinc-100 px-3 py-1 text-sm font-medium text-zinc-700">
+              <span className="rounded-full border border-[#CFC3AE] bg-[#F6F0E6] px-3 py-1 text-sm font-medium text-[#4F4B3F]">
                 {requestListItems.length}
               </span>
               <span
                 className={`rounded-full border px-3 py-1 text-sm font-semibold ${
                   pendingCount > 0
                     ? "border-amber-200 bg-amber-50 text-amber-800"
-                    : "border-zinc-300 bg-zinc-100 text-zinc-700"
+                    : "border-[#CFC3AE] bg-[#F6F0E6] text-[#4F4B3F]"
                 }`}
               >
                 {pendingCount} pending
@@ -143,12 +143,12 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
           </div>
         </summary>
         {reservationRequestsResult.status === "rejected" ? (
-          <p className="mt-5 rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600">
+          <p className="mt-5 rounded-2xl border border-[#D8CDBA] bg-[#F6F0E6] px-4 py-3 text-sm text-[#5F604E]">
             Reservation requests are unavailable right now. Refresh before
             reviewing or changing request status.
           </p>
         ) : requestListItems.length === 0 ? (
-          <p className="mt-5 rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600">
+          <p className="mt-5 rounded-2xl border border-[#D8CDBA] bg-[#F6F0E6] px-4 py-3 text-sm text-[#5F604E]">
             No reservation requests submitted yet.
           </p>
         ) : (
@@ -159,16 +159,16 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
                 className={`rounded-2xl border p-4 ${
                   requestListItem.status === "pending"
                     ? "border-amber-300 bg-amber-50/40"
-                    : "border-zinc-200 bg-zinc-50"
+                    : "border-[#D8CDBA] bg-[#F6F0E6]"
                 }`}
               >
-                <dl className="space-y-2 text-sm text-zinc-700">
+                <dl className="space-y-2 text-sm text-[#4F4B3F]">
                   <div>
-                    <dt className="font-medium text-zinc-900">Submitted</dt>
+                    <dt className="font-medium text-[#2B2922]">Submitted</dt>
                     <dd>{requestListItem.createdAtLabel}</dd>
                   </div>
                   <div>
-                    <dt className="font-medium text-zinc-900">Status</dt>
+                    <dt className="font-medium text-[#2B2922]">Status</dt>
                     <dd>
                       <span
                         className={`inline-flex rounded-full border px-3 py-1 text-xs font-medium ${getReservationRequestStatusBadgeClass(requestListItem.status)}`}
@@ -178,25 +178,25 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
                     </dd>
                   </div>
                   <div>
-                    <dt className="font-medium text-zinc-900">Name</dt>
+                    <dt className="font-medium text-[#2B2922]">Name</dt>
                     <dd>{requestListItem.guestName}</dd>
                   </div>
                   <div>
-                    <dt className="font-medium text-zinc-900">Email</dt>
+                    <dt className="font-medium text-[#2B2922]">Email</dt>
                     <dd>{requestListItem.guestEmail}</dd>
                   </div>
                   <div>
-                    <dt className="font-medium text-zinc-900">Event type</dt>
+                    <dt className="font-medium text-[#2B2922]">Event type</dt>
                     <dd>{requestListItem.eventTypeLabel}</dd>
                   </div>
                   <div>
-                    <dt className="font-medium text-zinc-900">
+                    <dt className="font-medium text-[#2B2922]">
                       Requested date and time
                     </dt>
                     <dd>{requestListItem.requestedSlotLabel}</dd>
                   </div>
                   <div>
-                    <dt className="font-medium text-zinc-900">Notes</dt>
+                    <dt className="font-medium text-[#2B2922]">Notes</dt>
                     <dd>{requestListItem.requestNotes || "None provided"}</dd>
                   </div>
                 </dl>
@@ -206,7 +206,7 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
                     className={`inline-flex min-h-11 items-center text-sm font-medium underline underline-offset-2 ${
                       requestListItem.status === "pending"
                         ? "text-amber-900 hover:text-amber-800"
-                        : "text-zinc-900 hover:text-zinc-700"
+                        : "text-[#2F4A35] hover:text-[#465744]"
                     }`}
                   >
                     {requestListItem.status === "pending"

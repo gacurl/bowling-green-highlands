@@ -34,14 +34,14 @@ export default async function ConfirmationPage() {
         hasConfirmedRequest ? (
           <Link
             href="/"
-            className="inline-flex min-h-11 w-full items-center justify-center rounded-full bg-[#E5BA41] px-6 py-3 text-sm font-semibold text-[#2D3C59] transition-colors hover:bg-[#D1855C] hover:text-white sm:w-auto"
+            className="inline-flex min-h-11 w-full items-center justify-center rounded-full bg-[#2F4A35] px-6 py-3 text-sm font-semibold text-[#FFF8EA] transition-colors hover:bg-[#B86748] sm:w-auto"
           >
             Back to landing
           </Link>
         ) : (
           <Link
             href="/reserve"
-            className="inline-flex min-h-11 w-full items-center justify-center rounded-full bg-[#E5BA41] px-6 py-3 text-sm font-semibold text-[#2D3C59] transition-colors hover:bg-[#D1855C] hover:text-white sm:w-auto"
+            className="inline-flex min-h-11 w-full items-center justify-center rounded-full bg-[#2F4A35] px-6 py-3 text-sm font-semibold text-[#FFF8EA] transition-colors hover:bg-[#B86748] sm:w-auto"
           >
             Start a reservation request
           </Link>
@@ -49,30 +49,30 @@ export default async function ConfirmationPage() {
       }
     >
       {confirmationState ? (
-        <div className="rounded-3xl border border-zinc-200 bg-white p-4 shadow-sm sm:p-6">
-          <dl className="space-y-4 text-sm text-zinc-600">
+        <div className="rounded-3xl border border-[#D8CDBA] bg-[#FDF8EF] p-4 shadow-sm sm:p-6">
+          <dl className="space-y-4 text-sm text-[#4F4B3F]">
             <div>
-              <dt className="font-medium text-zinc-900">Name</dt>
+              <dt className="font-medium text-[#2B2922]">Name</dt>
               <dd>{confirmationState.guestName}</dd>
             </div>
             <div>
-              <dt className="font-medium text-zinc-900">Email</dt>
+              <dt className="font-medium text-[#2B2922]">Email</dt>
               <dd>{confirmationState.guestEmail}</dd>
             </div>
             <div>
-              <dt className="font-medium text-zinc-900">Event type</dt>
+              <dt className="font-medium text-[#2B2922]">Event type</dt>
               <dd>{getEventTypeLabel(confirmationState.eventType)}</dd>
             </div>
             <div>
-              <dt className="font-medium text-zinc-900">Requested date and time</dt>
+              <dt className="font-medium text-[#2B2922]">Requested date and time</dt>
               <dd>{formatRequestedSlotLabel(confirmationState.requestedDates)}</dd>
             </div>
             <div>
-              <dt className="font-medium text-zinc-900">Notes</dt>
+              <dt className="font-medium text-[#2B2922]">Notes</dt>
               <dd>{confirmationState.requestNotes || "None provided"}</dd>
             </div>
             <div>
-              <dt className="font-medium text-zinc-900">Contact email</dt>
+              <dt className="font-medium text-[#2B2922]">Contact email</dt>
               <dd>{confirmationState.contactEmail || "Not configured"}</dd>
             </div>
           </dl>

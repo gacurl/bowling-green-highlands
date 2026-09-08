@@ -164,35 +164,35 @@ export function MonthCalendar({
   }
 
   return (
-    <section className="rounded-3xl border border-zinc-200 bg-white p-4 shadow-sm sm:p-6">
+    <section className="rounded-3xl border border-[#D8CDBA] bg-[#FDF8EF] p-4 shadow-sm sm:p-6">
       <div className="flex items-center justify-between gap-2 sm:gap-4">
         <button
           type="button"
           onClick={() => setDisplayMonth((current) => addMonths(current, -1))}
-          className="min-h-11 rounded-full border border-zinc-300 px-3 py-2 text-sm font-medium text-zinc-700 transition hover:border-zinc-500 hover:text-zinc-900 sm:px-4"
+          className="min-h-11 rounded-full border border-[#CFC3AE] bg-white px-3 py-2 text-sm font-medium text-[#4F4B3F] transition hover:border-[#2F4A35] hover:text-[#2B2922] sm:px-4"
           aria-label="Previous month"
         >
           Previous
         </button>
-        <h2 className="text-center text-base font-semibold text-zinc-900 sm:text-xl">
+        <h2 className="text-center text-base font-semibold text-[#2B2922] sm:text-xl">
           {formatMonthLabel(displayMonth)}
         </h2>
         <button
           type="button"
           onClick={() => setDisplayMonth((current) => addMonths(current, 1))}
-          className="min-h-11 rounded-full border border-zinc-300 px-3 py-2 text-sm font-medium text-zinc-700 transition hover:border-zinc-500 hover:text-zinc-900 sm:px-4"
+          className="min-h-11 rounded-full border border-[#CFC3AE] bg-white px-3 py-2 text-sm font-medium text-[#4F4B3F] transition hover:border-[#2F4A35] hover:text-[#2B2922] sm:px-4"
           aria-label="Next month"
         >
           Next
         </button>
       </div>
-      <div className="mt-4 flex flex-wrap items-center gap-3 text-sm text-zinc-600">
+      <div className="mt-4 flex flex-wrap items-center gap-3 text-sm text-[#5F604E]">
         <span className="inline-flex items-center gap-2">
-          <span className="h-3 w-3 rounded-full border border-emerald-300 bg-emerald-100" />
+          <span className="h-3 w-3 rounded-full border border-green-300 bg-green-50" />
           Available
         </span>
         <span className="inline-flex items-center gap-2">
-          <span className="h-3 w-3 rounded-full border border-zinc-400 bg-zinc-300" />
+          <span className="h-3 w-3 rounded-full border border-stone-300 bg-stone-100" />
           Blocked
         </span>
       </div>
@@ -200,7 +200,7 @@ export function MonthCalendar({
         {WEEKDAY_LABELS.map((weekday) => (
           <div
             key={weekday}
-            className="px-1 pb-1 text-center text-[10px] font-medium uppercase tracking-[0.14em] text-zinc-500 sm:px-2 sm:pb-2 sm:text-xs sm:tracking-[0.16em]"
+            className="px-1 pb-1 text-center text-[10px] font-medium uppercase tracking-[0.14em] text-[#6F745A] sm:px-2 sm:pb-2 sm:text-xs sm:tracking-[0.16em]"
           >
             {weekday}
           </div>
@@ -224,18 +224,18 @@ export function MonthCalendar({
                   : isSelected
                     ? isToday
                       ? isBlocked
-                        ? "border-[#E5BA41] bg-zinc-900 text-white shadow-lg ring-4 ring-[#E5BA41] ring-offset-2 ring-offset-white"
-                        : "border-[#E5BA41] bg-emerald-600 text-white shadow-lg ring-4 ring-[#E5BA41] ring-offset-2 ring-offset-white"
+                        ? "border-[#D6A84F] bg-stone-700 text-white shadow-lg ring-4 ring-[#D6A84F] ring-offset-2 ring-offset-[#FDF8EF]"
+                        : "border-[#D6A84F] bg-green-700 text-white shadow-lg ring-4 ring-[#D6A84F] ring-offset-2 ring-offset-[#FDF8EF]"
                       : isBlocked
-                        ? "border-[#E5BA41] bg-zinc-300 text-zinc-900 shadow-lg ring-4 ring-[#E5BA41] ring-offset-2 ring-offset-white"
-                        : "border-[#E5BA41] bg-emerald-100 text-zinc-900 shadow-lg ring-4 ring-[#E5BA41] ring-offset-2 ring-offset-white"
+                        ? "border-[#D6A84F] bg-stone-100 text-stone-900 shadow-lg ring-4 ring-[#D6A84F] ring-offset-2 ring-offset-[#FDF8EF]"
+                        : "border-[#D6A84F] bg-green-50 text-stone-900 shadow-lg ring-4 ring-[#D6A84F] ring-offset-2 ring-offset-[#FDF8EF]"
                     : isToday
                     ? isBlocked
-                      ? "border-zinc-900 bg-zinc-900 text-white"
-                      : "border-emerald-700 bg-emerald-600 text-white"
+                      ? "border-stone-700 bg-stone-700 text-white"
+                      : "border-green-700 bg-green-700 text-white"
                     : isBlocked
-                      ? "border-zinc-400 bg-zinc-300 text-zinc-900"
-                      : "border-emerald-300 bg-emerald-100 text-zinc-900"
+                      ? "border-stone-300 bg-stone-100 text-stone-800"
+                      : "border-green-300 bg-green-50 text-stone-900"
               }`}
               aria-current={isToday ? "date" : undefined}
               aria-label={
@@ -258,19 +258,19 @@ export function MonthCalendar({
         })}
       </div>
       {selectedCount > 0 ? (
-        <div className="mt-6 rounded-3xl border border-zinc-200 bg-zinc-50 p-4 sm:p-5">
+        <div className="mt-6 rounded-3xl border border-[#D8CDBA] bg-[#F6F0E6] p-4 sm:p-5">
           <div className="flex flex-wrap items-start justify-between gap-3 sm:gap-4">
             <div className="space-y-1">
-              <h3 className="text-lg font-semibold text-zinc-900">
+              <h3 className="text-lg font-semibold text-[#2B2922]">
                 Set availability
               </h3>
-              <p className="text-sm text-zinc-600">
+              <p className="text-sm text-[#5F604E]">
                 {selectedDateLabel
                   ? selectedDateLabel
                   : `${selectedCount} dates selected`}
               </p>
               {selectedDateLabel ? (
-                <p className="text-sm font-medium text-zinc-800">
+                <p className="text-sm font-medium text-[#2B2922]">
                   Current: {selectedDayStateLabel}
                 </p>
               ) : null}
@@ -278,7 +278,7 @@ export function MonthCalendar({
             <button
               type="button"
               onClick={() => setSelectedDates([])}
-              className="min-h-11 rounded-full border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 transition hover:border-zinc-500 hover:text-zinc-900"
+              className="min-h-11 rounded-full border border-[#CFC3AE] bg-white px-4 py-2 text-sm font-medium text-[#4F4B3F] transition hover:border-[#2F4A35] hover:text-[#2B2922]"
             >
               Clear selection
             </button>
@@ -287,14 +287,14 @@ export function MonthCalendar({
             <button
               type="button"
               onClick={() => updateSelectedDayAvailability("unavailable")}
-              className="inline-flex min-h-11 w-full items-center justify-center rounded-full border border-zinc-300 bg-white px-4 py-3 text-sm font-medium text-zinc-900 transition hover:bg-zinc-100 sm:w-auto"
+              className="inline-flex min-h-11 w-full items-center justify-center rounded-full border border-stone-300 bg-stone-100 px-4 py-3 text-sm font-medium text-stone-800 transition hover:bg-stone-200 sm:w-auto"
             >
               Mark selected blocked
             </button>
             <button
               type="button"
               onClick={() => updateSelectedDayAvailability("available")}
-              className="inline-flex min-h-11 w-full items-center justify-center rounded-full bg-zinc-900 px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-zinc-700 sm:w-auto"
+              className="inline-flex min-h-11 w-full items-center justify-center rounded-full bg-[#2F4A35] px-4 py-3 text-sm font-medium text-[#FFF8EA] transition-colors hover:bg-[#B86748] sm:w-auto"
             >
               Mark selected available
             </button>
