@@ -1,4 +1,5 @@
 import type { Slot } from "./slots";
+import { isOperatorAvailabilityDate } from "./operator-availability";
 
 type RequestedSlotValue = {
   date: string;
@@ -10,7 +11,7 @@ const REQUESTED_SLOT_PATTERN =
   /^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}) to (\d{2}:\d{2})$/;
 
 function isIsoDate(value: string) {
-  return /^\d{4}-\d{2}-\d{2}$/.test(value);
+  return isOperatorAvailabilityDate(value);
 }
 
 function isTime(value: string) {

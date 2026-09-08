@@ -69,6 +69,24 @@ test("rejects invalid availability modes without changing persisted state", asyn
   assert.equal(isDateAvailable(availability, "2026-06-14"), true);
 });
 
+test("rejects invalid calendar dates without changing persisted state", async () => {
+  const storePath = await createStorePath();
+
+  await setOperatorDateAvailability("2026-06-14", "available", storePath);
+
+  await assert.rejects(
+    setOperatorDateAvailability("2026-02-30", "unavailable", storePath),
+    /Invalid availability date/,
+  );
+
+  const availability = await readOperatorAvailability(storePath);
+
+  assert.deepEqual(
+    availability,
+    toOperatorAvailability({ "2026-06-14": "available" }),
+  );
+});
+
 test("normalizes persisted availability dates", async () => {
   const storePath = await createStorePath();
 
@@ -77,6 +95,7 @@ test("normalizes persisted availability dates", async () => {
     JSON.stringify({
       dates: {
         "bad-date": "available",
+        "2026-02-30": "available",
         "2026-06-14": "available",
         "2026-06-15": "unavailable",
         "2026-06-16": "bad-mode",

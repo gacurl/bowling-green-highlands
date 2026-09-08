@@ -28,6 +28,19 @@ test("invalid availability updates return a safe recovery message", async () => 
   );
 });
 
+test("invalid calendar date updates return a safe recovery message", async () => {
+  const response = await POST(
+    createAvailabilityRequest({ date: "2026-02-30", mode: "available" }),
+  );
+  const body = (await response.json()) as { error?: string };
+
+  assert.equal(response.status, 400);
+  assert.equal(
+    body.error,
+    "Availability could not be saved. No availability changes were saved.",
+  );
+});
+
 test("availability persistence failures return a safe recovery message", async () => {
   const previousStorePath = process.env.BGH_AVAILABILITY_STORE_PATH;
   const directory = await mkdtemp(path.join(tmpdir(), "bgh-availability-fail-"));

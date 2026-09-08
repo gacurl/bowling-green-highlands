@@ -31,6 +31,7 @@ test("parses canonical requested slot values", () => {
 test("rejects malformed requested slot values", () => {
   assert.equal(parseRequestedSlotValue("2026-06-14 9:00 to 09:30"), null);
   assert.equal(parseRequestedSlotValue("2026/06/14 09:00 to 09:30"), null);
+  assert.equal(parseRequestedSlotValue("2026-02-30 09:00 to 09:30"), null);
   assert.equal(parseRequestedSlotValue("bad-value"), null);
 });
 
