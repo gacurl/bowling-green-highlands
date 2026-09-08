@@ -1,6 +1,7 @@
 import { applyReservationAvailability } from "./slot-availability";
 import {
   isDateAvailable,
+  isOperatorAvailabilityDate,
   type OperatorAvailability,
 } from "./operator-availability";
 import { generateSlots, type Slot } from "./slots";
@@ -11,9 +12,8 @@ function normalizeDate(input: string): string | null {
   }
 
   const datePart = input.split("T")[0];
-  const isValidFormat = /^\d{4}-\d{2}-\d{2}$/.test(datePart);
 
-  return isValidFormat ? datePart : null;
+  return isOperatorAvailabilityDate(datePart) ? datePart : null;
 }
 
 export function isDateBlocked(
@@ -23,7 +23,7 @@ export function isDateBlocked(
   const normalized = normalizeDate(date);
 
   if (!normalized) {
-    return false;
+    return true;
   }
 
   return !isDateAvailable(availability, normalized);

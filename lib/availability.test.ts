@@ -40,6 +40,17 @@ test("returns an empty array for invalid slot-generation input", () => {
   );
 });
 
+test("returns no slots for invalid calendar dates", () => {
+  assert.deepEqual(
+    getAvailableSlots("2026-02-30", "09:00", "10:00", [], {
+      "2026-02-30": {
+        mode: "available",
+      },
+    }),
+    [],
+  );
+});
+
 test("returns no slots for a blocked date", () => {
   assert.deepEqual(
     getAvailableSlots("2026-06-12", "09:00", "10:00", [], {
