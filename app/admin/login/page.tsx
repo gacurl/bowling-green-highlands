@@ -19,7 +19,7 @@ export default async function AdminLoginPage({ searchParams }: AdminLoginPagePro
         <form
           action="/admin/login/submit"
           method="post"
-          className="w-full rounded-3xl border border-zinc-200 bg-white p-4 shadow-sm sm:p-6"
+          className="w-full rounded-3xl border border-[#D8CDBA] bg-[#FDF8EF] p-4 shadow-sm sm:p-6"
         >
           {errorMessage ? (
             <p
@@ -32,7 +32,7 @@ export default async function AdminLoginPage({ searchParams }: AdminLoginPagePro
           <input type="hidden" name="next" value={next} />
           <label
             htmlFor="password"
-            className="mb-2 block text-sm font-medium text-zinc-900"
+            className="mb-2 block text-sm font-medium text-[#2B2922]"
           >
             Admin password
           </label>
@@ -41,11 +41,11 @@ export default async function AdminLoginPage({ searchParams }: AdminLoginPagePro
             name="password"
             type="password"
             required
-            className="w-full rounded-2xl border border-zinc-300 px-4 py-3 text-zinc-900 outline-none transition focus:border-zinc-500"
+            className="w-full rounded-2xl border border-[#CFC3AE] bg-white px-4 py-3 text-[#2B2922] outline-none transition focus:border-[#2F4A35]"
           />
           <button
             type="submit"
-            className="mt-4 inline-flex min-h-11 w-full items-center justify-center rounded-full bg-zinc-900 px-6 py-3 text-sm font-medium text-white transition-colors hover:bg-zinc-700"
+            className="mt-4 inline-flex min-h-11 w-full items-center justify-center rounded-full bg-[#2F4A35] px-6 py-3 text-sm font-medium text-[#FFF8EA] transition-colors hover:bg-[#B86748]"
           >
             Continue to admin
           </button>

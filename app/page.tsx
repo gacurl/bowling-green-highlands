@@ -25,7 +25,7 @@ export default async function Home() {
         </div>
         <div className="absolute inset-0 flex items-end p-5 sm:p-8 lg:p-10">
           <div className="max-w-2xl space-y-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#E5BA41]">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#E9C96E]">
               Bowling Green Highlands
             </p>
             <h1 className="text-3xl font-semibold tracking-tight text-white sm:text-4xl lg:text-5xl">
@@ -37,7 +37,7 @@ export default async function Home() {
             </p>
             <Link
               href={reserveHref}
-              className="inline-flex min-h-11 w-full items-center justify-center rounded-full bg-[#E5BA41] px-6 py-3 text-sm font-semibold text-[#2D3C59] transition-colors hover:bg-[#D1855C] hover:text-white sm:w-auto"
+              className="inline-flex min-h-11 w-full items-center justify-center rounded-full bg-[#2F4A35] px-6 py-3 text-sm font-semibold text-[#FFF8EA] transition-colors hover:bg-[#B86748] sm:w-auto"
             >
               Reserve a Date
             </Link>
@@ -47,27 +47,27 @@ export default async function Home() {
 
       <section className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr] lg:items-center">
         <div className="space-y-4">
-          <h2 className="text-2xl font-semibold text-white sm:text-3xl">
+          <h2 className="text-2xl font-semibold text-[#2B2922] sm:text-3xl">
             A small farm visit built around the Highlands
           </h2>
-          <p className="text-sm leading-7 text-slate-200 sm:text-base">
+          <p className="text-sm leading-7 text-[#5F604E] sm:text-base">
             The cattle are the heart of Bowling Green Highlands. You will find open
             pasture, real farm pace, and a visit managed directly by the people
             caring for the animals.
           </p>
-          <div className="flex flex-wrap gap-3 text-sm text-slate-100">
-            <span className="rounded-full border border-[#94A378] px-4 py-2">
+          <div className="flex flex-wrap gap-3 text-sm text-[#465744]">
+            <span className="rounded-full border border-[#94A378] bg-[#FDF8EF] px-4 py-2">
               Real Highland cattle
             </span>
-            <span className="rounded-full border border-[#94A378] px-4 py-2">
+            <span className="rounded-full border border-[#94A378] bg-[#FDF8EF] px-4 py-2">
               Owner-managed dates
             </span>
-            <span className="rounded-full border border-[#94A378] px-4 py-2">
+            <span className="rounded-full border border-[#94A378] bg-[#FDF8EF] px-4 py-2">
               Request-based visits
             </span>
           </div>
         </div>
-        <div className="overflow-hidden rounded-2xl border border-white/20">
+        <div className="overflow-hidden rounded-2xl border border-[#CFC3AE]">
           <Image
             src="/images/about-barn-pasture.jpg"
             alt="Red barn and fenced pasture at Bowling Green Highlands."
@@ -80,17 +80,17 @@ export default async function Home() {
       </section>
 
       <section className="space-y-4">
-        <h2 className="text-2xl font-semibold text-white sm:text-3xl">
+        <h2 className="text-2xl font-semibold text-[#2B2922] sm:text-3xl">
           How visits work
         </h2>
-        <ol className="grid gap-3 text-sm text-zinc-700 sm:grid-cols-3 sm:gap-4 sm:text-base">
-          <li className="rounded-2xl border border-zinc-200 bg-white px-4 py-3 shadow-sm">
+        <ol className="grid gap-3 text-sm text-[#4F4B3F] sm:grid-cols-3 sm:gap-4 sm:text-base">
+          <li className="rounded-2xl border border-[#D8CDBA] bg-[#FDF8EF] px-4 py-3 shadow-sm">
             1. Pick an available date.
           </li>
-          <li className="rounded-2xl border border-zinc-200 bg-white px-4 py-3 shadow-sm">
+          <li className="rounded-2xl border border-[#D8CDBA] bg-[#FDF8EF] px-4 py-3 shadow-sm">
             2. Send your request.
           </li>
-          <li className="rounded-2xl border border-zinc-200 bg-white px-4 py-3 shadow-sm">
+          <li className="rounded-2xl border border-[#D8CDBA] bg-[#FDF8EF] px-4 py-3 shadow-sm">
             3. We confirm what works.
           </li>
         </ol>
@@ -98,35 +98,35 @@ export default async function Home() {
 
       <section id="homepage-faq" aria-labelledby="homepage-faq-heading" className="space-y-5">
         <div className="space-y-2">
-          <h2 id="homepage-faq-heading" className="text-2xl font-semibold text-white sm:text-3xl">
+          <h2 id="homepage-faq-heading" className="text-2xl font-semibold text-[#2B2922] sm:text-3xl">
             Ready to request your date?
           </h2>
-          <p className="max-w-2xl text-sm text-slate-200 sm:text-base">
+          <p className="max-w-2xl text-sm text-[#5F604E] sm:text-base">
             Choose an available day, send your request, and we will follow up with
             what works for the farm.
           </p>
         </div>
-        <div className="space-y-4 rounded-3xl border border-zinc-200 bg-white p-4 shadow-sm sm:p-6">
+        <div className="space-y-4 rounded-3xl border border-[#D8CDBA] bg-[#FDF8EF] p-4 shadow-sm sm:p-6">
           {faqItems.length > 0 ? (
             <dl className="space-y-4">
               {faqItems.map((faqItem) => (
                 <div key={faqItem.id} className="space-y-1">
-                  <dt className="text-sm font-medium text-zinc-900">
+                  <dt className="text-sm font-medium text-[#2B2922]">
                     {faqItem.question}
                   </dt>
-                  <dd className="text-sm text-zinc-700">{faqItem.answer}</dd>
+                  <dd className="text-sm text-[#4F4B3F]">{faqItem.answer}</dd>
                 </div>
               ))}
             </dl>
           ) : (
-            <p className="text-sm text-zinc-700">
+            <p className="text-sm text-[#4F4B3F]">
               Visits are request-based and confirmed by the farm after you submit a
               date.
             </p>
           )}
           <Link
             href={reserveHref}
-            className="inline-flex min-h-11 w-full items-center justify-center rounded-full bg-[#E5BA41] px-6 py-3 text-sm font-semibold text-[#2D3C59] transition-colors hover:bg-[#D1855C] hover:text-white sm:w-auto"
+            className="inline-flex min-h-11 w-full items-center justify-center rounded-full bg-[#2F4A35] px-6 py-3 text-sm font-semibold text-[#FFF8EA] transition-colors hover:bg-[#B86748] sm:w-auto"
           >
             Reserve a Date
           </Link>

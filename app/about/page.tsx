@@ -12,13 +12,13 @@ export default function AboutPage() {
       action={
         <Link
           href="/reserve"
-          className="inline-flex min-h-11 w-full items-center justify-center rounded-full bg-[#E5BA41] px-6 py-3 text-sm font-semibold text-[#2D3C59] transition-colors hover:bg-[#D1855C] hover:text-white sm:w-auto"
+          className="inline-flex min-h-11 w-full items-center justify-center rounded-full bg-[#2F4A35] px-6 py-3 text-sm font-semibold text-[#FFF8EA] transition-colors hover:bg-[#B86748] sm:w-auto"
         >
           Reserve
         </Link>
       }
     >
-      <section className="overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-sm">
+      <section className="overflow-hidden rounded-3xl border border-[#D8CDBA] bg-[#FDF8EF] shadow-sm">
         <div className="relative aspect-[16/9] w-full">
           <Image
             src="/images/about-barn-pasture.jpg"
@@ -30,8 +30,8 @@ export default function AboutPage() {
         </div>
       </section>
 
-      <section className="rounded-3xl border border-zinc-200 bg-white p-4 shadow-sm sm:p-6">
-        <p className="text-sm text-zinc-700 sm:text-base">
+      <section className="rounded-3xl border border-[#D8CDBA] bg-[#FDF8EF] p-4 shadow-sm sm:p-6">
+        <p className="text-sm text-[#4F4B3F] sm:text-base">
           We keep the process simple: request an available date, then we follow up
           directly. Submitting a request is not an automatic booking confirmation.
         </p>

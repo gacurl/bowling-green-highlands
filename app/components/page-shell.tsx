@@ -18,15 +18,15 @@ export function PageShell({
   actionAfterChildren = true,
 }: PageShellProps) {
   return (
-    <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col justify-center gap-6 px-4 py-10 sm:gap-8 sm:px-6 sm:py-16">
+    <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col justify-center gap-6 bg-[#F6F0E6] px-4 py-10 sm:gap-8 sm:px-6 sm:py-16">
       <div className="space-y-3 sm:space-y-4">
-        <p className="text-xs font-medium uppercase tracking-[0.2em] text-[#E5BA41] sm:text-sm">
+        <p className="text-xs font-medium uppercase tracking-[0.2em] text-[#8B6F2F] sm:text-sm">
           {eyebrow}
         </p>
-        <h1 className="text-3xl font-semibold tracking-tight text-slate-50 sm:text-4xl">
+        <h1 className="text-3xl font-semibold tracking-tight text-[#2B2922] sm:text-4xl">
           {title}
         </h1>
-        <p className="max-w-2xl text-base leading-7 text-slate-200 sm:text-lg sm:leading-8">
+        <p className="max-w-2xl text-base leading-7 text-[#5F604E] sm:text-lg sm:leading-8">
           {description}
         </p>
       </div>

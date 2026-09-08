@@ -54,7 +54,7 @@ export default async function ReservePage({ searchParams }: ReservePageProps) {
       title="Check availability, then send a reservation request."
       description="Pick an available date and time, then send your request. This is a request only."
       action={
-        <p className="text-sm text-slate-200">
+        <p className="text-sm text-[#5F604E]">
           We review requests and follow up directly.
         </p>
       }
@@ -72,17 +72,17 @@ export default async function ReservePage({ searchParams }: ReservePageProps) {
         <form
           action="/reserve/submit"
           method="post"
-          className="space-y-5 rounded-3xl border border-zinc-200 bg-white p-4 shadow-sm sm:p-6"
+          className="space-y-5 rounded-3xl border border-[#D8CDBA] bg-[#FDF8EF] p-4 shadow-sm sm:p-6"
         >
           <fieldset className="space-y-4">
             <div className="space-y-1">
-              <p className="text-sm font-medium text-zinc-500">
+              <p className="text-sm font-medium text-[#6F745A]">
                 Current availability
               </p>
-              <legend className="text-lg font-semibold text-zinc-900">
+              <legend className="text-lg font-semibold text-[#2B2922]">
                 Choose a date and time
               </legend>
-              <p className="text-sm text-zinc-600">
+              <p className="text-sm text-[#5F604E]">
                 Request times are shown for open dates: {RESERVE_EXAMPLE_START_TIME} to{" "}
                 {RESERVE_EXAMPLE_END_TIME}.
               </p>
@@ -94,7 +94,7 @@ export default async function ReservePage({ searchParams }: ReservePageProps) {
 
                   return (
                     <fieldset key={date} className="space-y-2">
-                      <legend className="text-sm font-medium text-zinc-700">
+                      <legend className="text-sm font-medium text-[#4F4B3F]">
                         {formatDateLabel(date)}
                       </legend>
                       {dateSlots.map((slot) => {
@@ -105,7 +105,7 @@ export default async function ReservePage({ searchParams }: ReservePageProps) {
                           return (
                             <div
                               key={`${slot.date}-${slot.startTime}-${slot.endTime}`}
-                              className="flex items-center justify-between rounded-2xl border border-zinc-200 bg-zinc-100 px-4 py-3 text-sm text-zinc-500"
+                              className="flex items-center justify-between rounded-2xl border border-stone-300 bg-stone-100 px-4 py-3 text-sm text-stone-500"
                               aria-disabled="true"
                             >
                               <span className="font-medium">
@@ -119,7 +119,7 @@ export default async function ReservePage({ searchParams }: ReservePageProps) {
                         return (
                           <label
                             key={`${slot.date}-${slot.startTime}-${slot.endTime}`}
-                            className="flex cursor-pointer items-center justify-between rounded-2xl border border-zinc-300 bg-white px-4 py-3 text-sm text-zinc-900 transition hover:border-zinc-500 has-[:checked]:border-zinc-900 has-[:checked]:bg-zinc-50"
+                            className="flex cursor-pointer items-center justify-between rounded-2xl border border-green-300 bg-green-50 px-4 py-3 text-sm text-stone-900 transition hover:border-green-600 has-[:checked]:border-[#D6A84F] has-[:checked]:bg-green-100"
                           >
                             <span className="flex items-center gap-3">
                               <input
@@ -127,7 +127,7 @@ export default async function ReservePage({ searchParams }: ReservePageProps) {
                                 name="requestedDates"
                                 value={slotValue}
                                 required
-                                className="h-4 w-4 border-zinc-300 text-zinc-900 focus:ring-zinc-500"
+                                className="h-4 w-4 border-green-300 text-[#D6A84F] focus:ring-[#D6A84F]"
                               />
                               <span className="font-medium">
                                 {slot.startTime} to {slot.endTime}
@@ -143,7 +143,7 @@ export default async function ReservePage({ searchParams }: ReservePageProps) {
               ) : (
                 <p
                   id="no-available-slots-note"
-                  className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600"
+                  className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm text-stone-600"
                 >
                   No dates are currently available to request. Please contact
                   us.
@@ -154,7 +154,7 @@ export default async function ReservePage({ searchParams }: ReservePageProps) {
           <div className="space-y-2">
             <label
               htmlFor="guestName"
-              className="block text-sm font-medium text-zinc-900"
+              className="block text-sm font-medium text-[#2B2922]"
             >
               Name
             </label>
@@ -163,13 +163,13 @@ export default async function ReservePage({ searchParams }: ReservePageProps) {
               name="guestName"
               type="text"
               required
-              className="w-full rounded-2xl border border-zinc-300 px-4 py-3 text-zinc-900 outline-none transition focus:border-zinc-500"
+              className="w-full rounded-2xl border border-[#CFC3AE] bg-white px-4 py-3 text-[#2B2922] outline-none transition focus:border-[#2F4A35]"
             />
           </div>
           <div className="space-y-2">
             <label
               htmlFor="guestEmail"
-              className="block text-sm font-medium text-zinc-900"
+              className="block text-sm font-medium text-[#2B2922]"
             >
               Email
             </label>
@@ -178,13 +178,13 @@ export default async function ReservePage({ searchParams }: ReservePageProps) {
               name="guestEmail"
               type="email"
               required
-              className="w-full rounded-2xl border border-zinc-300 px-4 py-3 text-zinc-900 outline-none transition focus:border-zinc-500"
+              className="w-full rounded-2xl border border-[#CFC3AE] bg-white px-4 py-3 text-[#2B2922] outline-none transition focus:border-[#2F4A35]"
             />
           </div>
           <div className="space-y-2">
             <label
               htmlFor="phone"
-              className="block text-sm font-medium text-zinc-900"
+              className="block text-sm font-medium text-[#2B2922]"
             >
               Phone
             </label>
@@ -193,13 +193,13 @@ export default async function ReservePage({ searchParams }: ReservePageProps) {
               name="phone"
               type="text"
               required
-              className="w-full rounded-2xl border border-zinc-300 px-4 py-3 text-zinc-900 outline-none transition focus:border-zinc-500"
+              className="w-full rounded-2xl border border-[#CFC3AE] bg-white px-4 py-3 text-[#2B2922] outline-none transition focus:border-[#2F4A35]"
             />
           </div>
           <div className="space-y-2">
             <label
               htmlFor="eventType"
-              className="block text-sm font-medium text-zinc-900"
+              className="block text-sm font-medium text-[#2B2922]"
             >
               Event type
             </label>
@@ -207,7 +207,7 @@ export default async function ReservePage({ searchParams }: ReservePageProps) {
               id="eventType"
               name="eventType"
               required
-              className="w-full rounded-2xl border border-zinc-300 px-4 py-3 text-zinc-900 outline-none transition placeholder:text-zinc-400 focus:border-zinc-500"
+              className="w-full rounded-2xl border border-[#CFC3AE] bg-white px-4 py-3 text-[#2B2922] outline-none transition placeholder:text-stone-400 focus:border-[#2F4A35]"
               defaultValue=""
             >
               <option value="" disabled>
@@ -223,7 +223,7 @@ export default async function ReservePage({ searchParams }: ReservePageProps) {
           <div className="space-y-2">
             <label
               htmlFor="requestNotes"
-              className="block text-sm font-medium text-zinc-900"
+              className="block text-sm font-medium text-[#2B2922]"
             >
               Notes
             </label>
@@ -232,7 +232,7 @@ export default async function ReservePage({ searchParams }: ReservePageProps) {
               name="requestNotes"
               rows={4}
               placeholder="Share anything we should know."
-              className="w-full rounded-2xl border border-zinc-300 px-4 py-3 text-zinc-900 outline-none transition placeholder:text-zinc-400 focus:border-zinc-500"
+              className="w-full rounded-2xl border border-[#CFC3AE] bg-white px-4 py-3 text-[#2B2922] outline-none transition placeholder:text-stone-400 focus:border-[#2F4A35]"
             />
           </div>
           <button
@@ -240,7 +240,7 @@ export default async function ReservePage({ searchParams }: ReservePageProps) {
             disabled={!hasSelectableSlots}
             aria-disabled={!hasSelectableSlots}
             aria-describedby={!hasSelectableSlots ? "no-available-slots-note" : undefined}
-            className="inline-flex min-h-11 w-full items-center justify-center rounded-full bg-[#E5BA41] px-6 py-3 text-sm font-semibold text-[#2D3C59] transition-colors hover:bg-[#D1855C] hover:text-white disabled:bg-zinc-300 disabled:text-zinc-600 sm:w-auto"
+            className="inline-flex min-h-11 w-full items-center justify-center rounded-full bg-[#2F4A35] px-6 py-3 text-sm font-semibold text-[#FFF8EA] transition-colors hover:bg-[#B86748] disabled:bg-stone-300 disabled:text-stone-600 sm:w-auto"
           >
             Submit reservation request
           </button>
