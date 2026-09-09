@@ -17,6 +17,8 @@
 # local runtime state
 /data/operator-availability.json
 /data/operator-availability.json.tmp
+/data/reservation-requests.json
+/data/reservation-requests.json.tmp
 
 # next.js
 /.next/
