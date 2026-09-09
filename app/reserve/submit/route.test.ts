@@ -56,6 +56,20 @@ function readRedirectPath(response: Response) {
   return new URL(location).pathname + new URL(location).search;
 }
 
+function setNodeEnv(value: NodeJS.ProcessEnv["NODE_ENV"] | undefined) {
+  if (value === undefined) {
+    Reflect.deleteProperty(process.env, "NODE_ENV");
+    return;
+  }
+
+  Object.defineProperty(process.env, "NODE_ENV", {
+    configurable: true,
+    enumerable: true,
+    value,
+    writable: true,
+  });
+}
+
 function withEnvironment(runTest: () => Promise<void> | void) {
   return async () => {
     const previousContactEmail = process.env.CONTACT_EMAIL;
@@ -290,7 +304,7 @@ test(
     withEnvironment(async () => {
       const previousNodeEnv = process.env.NODE_ENV;
 
-      process.env.NODE_ENV = "production";
+      setNodeEnv("production");
       delete process.env.CONFIRMATION_COOKIE_SECRET;
 
       try {
@@ -307,11 +321,7 @@ test(
         assert.equal(sentEmails.length, 0);
         assert.deepEqual(await readReservationRequests(), []);
       } finally {
-        if (previousNodeEnv === undefined) {
-          delete process.env.NODE_ENV;
-        } else {
-          process.env.NODE_ENV = previousNodeEnv;
-        }
+        setNodeEnv(previousNodeEnv);
       }
     }),
   ),
