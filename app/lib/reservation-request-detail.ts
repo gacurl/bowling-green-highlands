@@ -11,6 +11,7 @@ export type ReservationRequestDetailItem = {
   guestEmail: string;
   guestName: string;
   id: string;
+  publicPaymentPath: string | null;
   requestNotes: string;
   requestedSlotLabel: string;
   status: ReservationRequestStatus;
@@ -33,6 +34,8 @@ export function toReservationRequestDetailItem(
     guestEmail: request.guestEmail,
     guestName: request.guestName,
     id: request.id,
+    publicPaymentPath:
+      request.status === "accepted" ? `/pay/${encodeURIComponent(request.id)}` : null,
     requestNotes: request.requestNotes,
     requestedSlotLabel: formatRequestedSlotLabel(request.requestedDates),
     status: request.status,

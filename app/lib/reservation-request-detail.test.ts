@@ -27,6 +27,7 @@ test("returns a friendly request detail item for a known request id", () => {
   );
   assert.equal(requestDetailItem.status, "pending");
   assert.equal(requestDetailItem.statusUpdatedAtLabel, null);
+  assert.equal(requestDetailItem.publicPaymentPath, null);
 });
 
 test("returns null for an unknown request id", () => {
@@ -49,5 +50,34 @@ test("returns a status-updated label when a timestamp is present", () => {
 
   assert.ok(requestDetailItem);
   assert.equal(requestDetailItem.status, "accepted");
+  assert.equal(requestDetailItem.publicPaymentPath, "/pay/updated-id");
   assert.ok(requestDetailItem.statusUpdatedAtLabel);
+});
+
+test("only accepted request details expose a public payment path", () => {
+  const acceptedRequest: ReservationRequestRecord = {
+    ...requests[0],
+    id: "accepted-id",
+    status: "accepted",
+  };
+  const declinedRequest: ReservationRequestRecord = {
+    ...requests[0],
+    id: "declined-id",
+    status: "declined",
+  };
+
+  assert.equal(
+    toReservationRequestDetailItem([acceptedRequest], "accepted-id")
+      ?.publicPaymentPath,
+    "/pay/accepted-id",
+  );
+  assert.equal(
+    toReservationRequestDetailItem([requests[0]], "first-id")?.publicPaymentPath,
+    null,
+  );
+  assert.equal(
+    toReservationRequestDetailItem([declinedRequest], "declined-id")
+      ?.publicPaymentPath,
+    null,
+  );
 });

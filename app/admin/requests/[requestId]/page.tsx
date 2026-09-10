@@ -118,6 +118,19 @@ export default async function RequestDetailPage({
             <span>{errorMessage.body}</span>
           </p>
         ) : null}
+        {requestDetail.publicPaymentPath ? (
+          <div className="mt-6 rounded-2xl border border-[#CFC3AE] bg-[#F6F0E6] px-4 py-3 text-sm text-[#4F4B3F]">
+            <p className="font-medium text-[#2B2922]">
+              Send this payment link to the customer.
+            </p>
+            <Link
+              href={requestDetail.publicPaymentPath}
+              className="mt-2 inline-flex break-all font-semibold text-[#2F4A35] underline underline-offset-4"
+            >
+              {requestDetail.publicPaymentPath}
+            </Link>
+          </div>
+        ) : null}
         {requestDetail.status === "pending" ? (
           <form
             action={`/admin/requests/${requestDetail.id}/status`}
