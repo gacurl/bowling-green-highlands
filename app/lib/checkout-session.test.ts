@@ -183,6 +183,25 @@ test("stored email, configured Price ID, and reservation ID are sent to Stripe",
   });
 });
 
+test("Checkout creation exceptions return a generic failure without exposing details", async () => {
+  const sensitiveSentinel = "sensitive Stripe exception detail";
+  const result = await createReservationCheckoutSession({
+    appUrl: "https://example.com",
+    createSession: async () => {
+      throw new Error(sensitiveSentinel);
+    },
+    loadRequests: async () => [acceptedRequest],
+    priceId: "price_configured",
+    requestId: "accepted-id",
+  });
+
+  assert.deepEqual(result, {
+    kind: "unavailable",
+    reason: "checkout_failed",
+  });
+  assert.doesNotMatch(JSON.stringify(result), new RegExp(sensitiveSentinel));
+});
+
 test("unreadable reservation requests fail closed without calling Stripe", async () => {
   const fakeStripe = createFakeStripeSessionRecorder();
   const result = await createReservationCheckoutSession({

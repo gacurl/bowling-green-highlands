@@ -102,22 +102,31 @@ export async function createReservationCheckoutSession({
   }
 
   const paymentUrl = `${normalizedAppUrl}/pay/${encodeURIComponent(requestId)}`;
-  const session = await createSession({
-    cancel_url: `${paymentUrl}?checkout=cancelled`,
-    client_reference_id: reservationRequest.id,
-    customer_email: reservationRequest.guestEmail,
-    line_items: [
-      {
-        price: trimmedPriceId,
-        quantity: 1,
+  let session: { url: string | null };
+
+  try {
+    session = await createSession({
+      cancel_url: `${paymentUrl}?checkout=cancelled`,
+      client_reference_id: reservationRequest.id,
+      customer_email: reservationRequest.guestEmail,
+      line_items: [
+        {
+          price: trimmedPriceId,
+          quantity: 1,
+        },
+      ],
+      metadata: {
+        reservationRequestId: reservationRequest.id,
       },
-    ],
-    metadata: {
-      reservationRequestId: reservationRequest.id,
-    },
-    mode: "payment",
-    success_url: `${paymentUrl}?checkout=returned`,
-  });
+      mode: "payment",
+      success_url: `${paymentUrl}?checkout=returned`,
+    });
+  } catch {
+    return {
+      kind: "unavailable",
+      reason: "checkout_failed",
+    };
+  }
 
   if (!session.url) {
     return {
