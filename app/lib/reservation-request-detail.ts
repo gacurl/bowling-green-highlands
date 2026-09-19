@@ -11,6 +11,7 @@ export type ReservationRequestDetailItem = {
   guestEmail: string;
   guestName: string;
   id: string;
+  paymentStatusLabel: "Paid" | "Unpaid";
   publicPaymentPath: string | null;
   requestNotes: string;
   requestedSlotLabel: string;
@@ -34,6 +35,7 @@ export function toReservationRequestDetailItem(
     guestEmail: request.guestEmail,
     guestName: request.guestName,
     id: request.id,
+    paymentStatusLabel: request.paymentStatus === "paid" ? "Paid" : "Unpaid",
     publicPaymentPath:
       request.status === "accepted" ? `/pay/${encodeURIComponent(request.id)}` : null,
     requestNotes: request.requestNotes,

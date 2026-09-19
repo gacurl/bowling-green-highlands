@@ -26,6 +26,7 @@ test("returns a friendly request detail item for a known request id", () => {
     "Sunday, June 14, 2026, 09:00 to 09:30",
   );
   assert.equal(requestDetailItem.status, "pending");
+  assert.equal(requestDetailItem.paymentStatusLabel, "Unpaid");
   assert.equal(requestDetailItem.statusUpdatedAtLabel, null);
   assert.equal(requestDetailItem.publicPaymentPath, null);
 });
@@ -79,5 +80,19 @@ test("only accepted request details expose a public payment path", () => {
     toReservationRequestDetailItem([declinedRequest], "declined-id")
       ?.publicPaymentPath,
     null,
+  );
+});
+
+test("labels paid request details as Paid", () => {
+  const paidRequest: ReservationRequestRecord = {
+    ...requests[0],
+    id: "paid-id",
+    paymentStatus: "paid",
+    status: "accepted",
+  };
+
+  assert.equal(
+    toReservationRequestDetailItem([paidRequest], "paid-id")?.paymentStatusLabel,
+    "Paid",
   );
 });

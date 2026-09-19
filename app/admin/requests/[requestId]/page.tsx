@@ -85,6 +85,10 @@ export default async function RequestDetailPage({
             <dd>{requestDetail.statusUpdatedAtLabel ?? "Not available"}</dd>
           </div>
           <div>
+            <dt className="font-medium text-[#2B2922]">Payment status</dt>
+            <dd>{requestDetail.paymentStatusLabel}</dd>
+          </div>
+          <div>
             <dt className="font-medium text-[#2B2922]">Name</dt>
             <dd>{requestDetail.guestName}</dd>
           </div>

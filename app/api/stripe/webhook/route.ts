@@ -1,6 +1,6 @@
 import { getStripeCheckoutClient } from "../../../lib/stripe-checkout";
 import { getStripeWebhookSecret } from "../../../lib/stripe-config";
-import { classifyStripeWebhook } from "../../../lib/stripe-webhook";
+import { processStripeWebhook } from "../../../lib/stripe-webhook";
 
 export const runtime = "nodejs";
 
@@ -15,7 +15,7 @@ export async function POST(request: Request) {
 
   const stripeCheckout = getStripeCheckoutClient();
   const webhookSecret = getStripeWebhookSecret();
-  const classification = await classifyStripeWebhook({
+  const classification = await processStripeWebhook({
     constructEvent: stripeCheckout
       ? (payload, signature, secret) =>
           stripeCheckout.stripe.webhooks.constructEvent(

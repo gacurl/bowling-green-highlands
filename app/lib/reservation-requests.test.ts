@@ -1,11 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import {
   createReservationRequestRecord,
   isReservationRequestStatusUpdate,
+  markReservationRequestPaid,
   readReservationRequests,
   updateReservationRequestStatus,
 } from "./reservation-requests";
@@ -49,8 +50,10 @@ test("stores and reads pending reservation requests", async () => {
 
   assert.equal(reservationRequests.length, 2);
   assert.equal(reservationRequests[0].status, "pending");
+  assert.equal(reservationRequests[0].paymentStatus, "unpaid");
   assert.equal(reservationRequests[0].id, firstRequest.id);
   assert.equal(reservationRequests[1].status, "pending");
+  assert.equal(reservationRequests[1].paymentStatus, "unpaid");
   assert.equal(reservationRequests[1].id, secondRequest.id);
   assert.ok(!Number.isNaN(Date.parse(reservationRequests[0].createdAt)));
   assert.ok(!Number.isNaN(Date.parse(reservationRequests[1].createdAt)));
@@ -182,6 +185,165 @@ test("reads accepted and declined statuses from persisted requests", async () =>
 
   assert.equal(reservationRequests[0].status, "accepted");
   assert.equal(reservationRequests[1].status, "declined");
+});
+
+test("normalizes a legacy reservation without payment status to unpaid", async () => {
+  const storePath = await createStorePath();
+  const legacyRequest = {
+    createdAt: "2026-06-14T09:00:00.000Z",
+    eventType: "farm_stay",
+    guestEmail: "legacy@example.com",
+    guestName: "Legacy Guest",
+    id: "legacy-id",
+    requestNotes: "",
+    requestedDates: "2026-06-14 09:00 to 09:30",
+    status: "accepted",
+  };
+
+  await writeFile(
+    storePath,
+    `${JSON.stringify({ requests: [legacyRequest] }, null, 2)}\n`,
+    "utf8",
+  );
+
+  const [normalizedRequest] = await readReservationRequests(storePath);
+
+  assert.equal(normalizedRequest.paymentStatus, "unpaid");
+});
+
+test("marks only the targeted accepted reservation as paid", async () => {
+  const storePath = await createStorePath();
+  const targetRequest = await createReservationRequestRecord(
+    {
+      eventType: "farm_stay",
+      guestEmail: "target@example.com",
+      guestName: "Target Guest",
+      requestNotes: "",
+      requestedDates: "2026-08-01 09:00 to 09:30",
+    },
+    storePath,
+  );
+  const otherRequest = await createReservationRequestRecord(
+    {
+      eventType: "retreat",
+      guestEmail: "other@example.com",
+      guestName: "Other Guest",
+      requestNotes: "",
+      requestedDates: "2026-08-02 09:00 to 09:30",
+    },
+    storePath,
+  );
+
+  assert.equal(
+    await updateReservationRequestStatus(targetRequest.id, "accepted", storePath),
+    "updated",
+  );
+  assert.equal(
+    await updateReservationRequestStatus(otherRequest.id, "accepted", storePath),
+    "updated",
+  );
+  const otherRequestBeforePayment = (await readReservationRequests(storePath)).find(
+    (requestRecord) => requestRecord.id === otherRequest.id,
+  );
+
+  assert.equal(
+    await markReservationRequestPaid(targetRequest.id, storePath),
+    "updated",
+  );
+
+  const reservationRequests = await readReservationRequests(storePath);
+  const paidTarget = reservationRequests.find(
+    (requestRecord) => requestRecord.id === targetRequest.id,
+  );
+  const untouchedOther = reservationRequests.find(
+    (requestRecord) => requestRecord.id === otherRequest.id,
+  );
+
+  assert.equal(paidTarget?.paymentStatus, "paid");
+  assert.deepEqual(untouchedOther, otherRequestBeforePayment);
+});
+
+test("does not mark pending, declined, or missing reservations as paid", async () => {
+  const storePath = await createStorePath();
+  const pendingRequest = await createReservationRequestRecord(
+    {
+      eventType: "farm_stay",
+      guestEmail: "pending@example.com",
+      guestName: "Pending Guest",
+      requestNotes: "",
+      requestedDates: "2026-08-03 09:00 to 09:30",
+    },
+    storePath,
+  );
+  const declinedRequest = await createReservationRequestRecord(
+    {
+      eventType: "retreat",
+      guestEmail: "declined@example.com",
+      guestName: "Declined Guest",
+      requestNotes: "",
+      requestedDates: "2026-08-04 09:00 to 09:30",
+    },
+    storePath,
+  );
+
+  assert.equal(
+    await updateReservationRequestStatus(declinedRequest.id, "declined", storePath),
+    "updated",
+  );
+  assert.equal(
+    await markReservationRequestPaid(pendingRequest.id, storePath),
+    "not_accepted",
+  );
+  assert.equal(
+    await markReservationRequestPaid(declinedRequest.id, storePath),
+    "not_accepted",
+  );
+  assert.equal(
+    await markReservationRequestPaid("missing-id", storePath),
+    "not_found",
+  );
+
+  const reservationRequests = await readReservationRequests(storePath);
+
+  assert.ok(
+    reservationRequests.every(
+      (requestRecord) => requestRecord.paymentStatus === "unpaid",
+    ),
+  );
+});
+
+test("an already-paid reservation remains paid without another write", async () => {
+  const storePath = await createStorePath();
+  const request = await createReservationRequestRecord(
+    {
+      eventType: "farm_stay",
+      guestEmail: "paid@example.com",
+      guestName: "Paid Guest",
+      requestNotes: "",
+      requestedDates: "2026-08-05 09:00 to 09:30",
+    },
+    storePath,
+  );
+
+  assert.equal(
+    await updateReservationRequestStatus(request.id, "accepted", storePath),
+    "updated",
+  );
+  assert.equal(
+    await markReservationRequestPaid(request.id, storePath),
+    "updated",
+  );
+
+  await mkdir(`${storePath}.tmp`);
+
+  assert.equal(
+    await markReservationRequestPaid(request.id, storePath),
+    "already_paid",
+  );
+  assert.equal(
+    (await readReservationRequests(storePath))[0].paymentStatus,
+    "paid",
+  );
 });
 
 test("accepting one request does not change another request", async () => {
