@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { PageShell } from "../../components/page-shell";
 import { getEventTypeLabel } from "../../lib/event-type";
 import {
@@ -27,6 +28,7 @@ export default async function PaymentPage({
   const pageContent = getPaymentPageContent(
     paymentAvailable,
     getCheckoutReturnState(resolvedSearchParams.checkout),
+    paymentAvailable ? paymentState.request.paymentStatus : undefined,
   );
 
   return (
@@ -35,7 +37,7 @@ export default async function PaymentPage({
       title={pageContent.title}
       description={pageContent.description}
       action={
-        paymentAvailable ? (
+        pageContent.primaryAction === "pay" ? (
           <form action={`/pay/${requestId}/checkout`} method="post">
             <button
               type="submit"
@@ -44,6 +46,13 @@ export default async function PaymentPage({
               Pay securely
             </button>
           </form>
+        ) : pageContent.primaryAction === "refresh" ? (
+          <Link
+            href={`/pay/${encodeURIComponent(requestId)}?checkout=returned`}
+            className="inline-flex min-h-11 w-full items-center justify-center rounded-full bg-[#2F4A35] px-6 py-3 text-sm font-semibold text-[#FFF8EA] transition-colors hover:bg-[#B86748] sm:w-auto"
+          >
+            Refresh payment status
+          </Link>
         ) : null
       }
     >
@@ -63,11 +72,21 @@ export default async function PaymentPage({
               <dt className="font-medium text-[#2B2922]">Date and time</dt>
               <dd>{formatRequestedSlotLabel(paymentState.request.requestedDates)}</dd>
             </div>
+            <div>
+              <dt className="font-medium text-[#2B2922]">Reservation status</dt>
+              <dd>{pageContent.reservationStatusLabel}</dd>
+            </div>
+            <div>
+              <dt className="font-medium text-[#2B2922]">Payment status</dt>
+              <dd>{pageContent.paymentStatusLabel}</dd>
+            </div>
           </dl>
-          <p className="mt-4 text-sm leading-6 text-[#5F604E]">
-            Stripe handles payment securely. Returning from Stripe does not confirm
-            payment completion until Bowling Green Highlands verifies it.
-          </p>
+          {pageContent.primaryAction === "pay" ? (
+            <p className="mt-4 text-sm leading-6 text-[#5F604E]">
+              Stripe handles payment securely. Returning from Stripe does not confirm
+              payment completion until Bowling Green Highlands verifies it.
+            </p>
+          ) : null}
         </div>
       ) : null}
     </PageShell>

@@ -35,6 +35,23 @@ test("allows payment for accepted requests when Stripe config exists", async () 
   assert.equal(state.kind === "available" ? state.request.id : null, "accepted-id");
 });
 
+test("preserves persisted payment status for an accepted request", async () => {
+  const paidRequest: ReservationRequestRecord = {
+    ...acceptedRequest,
+    id: "paid-id",
+    paymentStatus: "paid",
+  };
+  const state = await getPaymentRequestState("paid-id", true, async () => [
+    paidRequest,
+  ]);
+
+  assert.equal(state.kind, "available");
+  assert.equal(
+    state.kind === "available" ? state.request.paymentStatus : null,
+    "paid",
+  );
+});
+
 test("does not allow payment when Stripe config is missing", async () => {
   const state = await getPaymentRequestState("accepted-id", false, async () => [
     acceptedRequest,
