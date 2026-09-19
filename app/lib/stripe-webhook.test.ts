@@ -249,6 +249,79 @@ test("invalid, unpaid, and unsupported events do not call payment persistence", 
   assert.equal(mutationCount, 0);
 });
 
+test("signed async-failure and expiry events are 200 no-ops without state access", async () => {
+  const paidRequest: ReservationRequestRecord = {
+    ...acceptedRequest,
+    paymentStatus: "paid",
+  };
+  const originalRequest = structuredClone(paidRequest);
+  let lookupCount = 0;
+  let mutationCount = 0;
+  const loadRequests = async () => {
+    lookupCount += 1;
+    return [paidRequest];
+  };
+  const markPaid = async (): Promise<MarkReservationRequestPaidResult> => {
+    mutationCount += 1;
+    return "updated";
+  };
+
+  const failedResult = await processSignedPayload(
+    { eventType: "checkout.session.async_payment_failed" },
+    loadRequests,
+    markPaid,
+  );
+  const expiredResult = await processSignedPayload(
+    { eventType: "checkout.session.expired" },
+    loadRequests,
+    markPaid,
+  );
+
+  assert.deepEqual(failedResult, {
+    eventId: "evt_test_webhook",
+    eventType: "checkout.session.async_payment_failed",
+    httpStatus: 200,
+    kind: "ignored",
+    reason: "payment_failed",
+  });
+  assert.deepEqual(expiredResult, {
+    eventId: "evt_test_webhook",
+    eventType: "checkout.session.expired",
+    httpStatus: 200,
+    kind: "ignored",
+    reason: "session_expired",
+  });
+  assert.equal(lookupCount, 0);
+  assert.equal(mutationCount, 0);
+  assert.deepEqual(paidRequest, originalRequest);
+});
+
+test("invalid signatures on failure events still return 400", async () => {
+  const rawBody = createEventPayload({
+    eventType: "checkout.session.async_payment_failed",
+  });
+  const result = await processStripeWebhook({
+    constructEvent,
+    loadRequests: async () => {
+      throw new Error("failure event must not read reservation state");
+    },
+    markPaid: async () => {
+      throw new Error("failure event must not mutate payment state");
+    },
+    rawBody,
+    signature: createSignature(rawBody, {
+      secret: "whsec_different_placeholder",
+    }),
+    webhookSecret: WEBHOOK_SECRET_PLACEHOLDER,
+  });
+
+  assert.deepEqual(result, {
+    httpStatus: 400,
+    kind: "invalid_request",
+    reason: "invalid_signature",
+  });
+});
+
 test("payment persistence failure returns 500 for Stripe retry", async () => {
   const result = await processSignedPayload(
     {},

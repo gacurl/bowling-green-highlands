@@ -16,6 +16,14 @@ export const SUPPORTED_STRIPE_PAYMENT_EVENT_TYPES = [
 export type SupportedStripePaymentEventType =
   (typeof SUPPORTED_STRIPE_PAYMENT_EVENT_TYPES)[number];
 
+const STRIPE_PAYMENT_FAILURE_EVENT_TYPES = [
+  "checkout.session.async_payment_failed",
+  "checkout.session.expired",
+] as const;
+
+type StripePaymentFailureEventType =
+  (typeof STRIPE_PAYMENT_FAILURE_EVENT_TYPES)[number];
+
 export type StripeWebhookEventConstructor = (
   rawBody: string,
   signature: string,
@@ -59,6 +67,8 @@ export type StripeWebhookClassification =
         | "not_paid"
         | "not_payment_mode"
         | "not_checkout_session"
+        | "payment_failed"
+        | "session_expired"
         | "unsupported_event";
     }
   | {
@@ -80,6 +90,14 @@ function isSupportedPaymentEventType(
 ): eventType is SupportedStripePaymentEventType {
   return SUPPORTED_STRIPE_PAYMENT_EVENT_TYPES.some(
     (supportedEventType) => supportedEventType === eventType,
+  );
+}
+
+function isPaymentFailureEventType(
+  eventType: string,
+): eventType is StripePaymentFailureEventType {
+  return STRIPE_PAYMENT_FAILURE_EVENT_TYPES.some(
+    (failureEventType) => failureEventType === eventType,
   );
 }
 
@@ -126,6 +144,19 @@ export async function classifyStripeWebhook({
       httpStatus: 400,
       kind: "invalid_request",
       reason: "invalid_signature",
+    };
+  }
+
+  if (isPaymentFailureEventType(event.type)) {
+    return {
+      eventId: typeof event.id === "string" ? event.id : null,
+      eventType: event.type,
+      httpStatus: 200,
+      kind: "ignored",
+      reason:
+        event.type === "checkout.session.async_payment_failed"
+          ? "payment_failed"
+          : "session_expired",
     };
   }
 

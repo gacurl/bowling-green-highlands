@@ -1,6 +1,6 @@
 import type { ReservationPaymentStatus } from "./reservation-requests";
 
-export type CheckoutReturnState = "cancelled" | "returned" | null;
+export type CheckoutReturnState = "cancelled" | "returned" | "unavailable" | null;
 export type PaymentPagePrimaryAction = "pay" | "refresh" | null;
 
 export type PaymentPageContent = {
@@ -15,11 +15,19 @@ export type PaymentPageContent = {
 export function getCheckoutReturnState(
   value: string | undefined,
 ): CheckoutReturnState {
-  if (value === "cancelled" || value === "returned") {
+  if (
+    value === "cancelled" ||
+    value === "returned" ||
+    value === "unavailable"
+  ) {
     return value;
   }
 
   return null;
+}
+
+export function getCanonicalPaymentPath(requestId: string) {
+  return `/pay/${encodeURIComponent(requestId)}`;
 }
 
 export function getPaymentPageContent(
@@ -71,6 +79,17 @@ export function getPaymentPageContent(
       description: "Returning from Stripe does not confirm payment.",
       paymentStatusLabel: "Not yet verified",
       primaryAction: "refresh",
+      reservationStatusLabel: "Accepted",
+    };
+  }
+
+  if (checkoutReturnState === "unavailable") {
+    return {
+      notice: "No payment was made. Please try secure payment again.",
+      title: "Payment could not be started.",
+      description: "Your reservation request remains accepted.",
+      paymentStatusLabel: "Not yet verified",
+      primaryAction: "pay",
       reservationStatusLabel: "Accepted",
     };
   }

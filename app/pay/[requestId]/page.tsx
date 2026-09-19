@@ -2,6 +2,7 @@ import Link from "next/link";
 import { PageShell } from "../../components/page-shell";
 import { getEventTypeLabel } from "../../lib/event-type";
 import {
+  getCanonicalPaymentPath,
   getCheckoutReturnState,
   getPaymentPageContent,
 } from "../../lib/payment-page-content";
@@ -48,7 +49,7 @@ export default async function PaymentPage({
           </form>
         ) : pageContent.primaryAction === "refresh" ? (
           <Link
-            href={`/pay/${encodeURIComponent(requestId)}?checkout=returned`}
+            href={getCanonicalPaymentPath(requestId)}
             className="inline-flex min-h-11 w-full items-center justify-center rounded-full bg-[#2F4A35] px-6 py-3 text-sm font-semibold text-[#FFF8EA] transition-colors hover:bg-[#B86748] sm:w-auto"
           >
             Refresh payment status
