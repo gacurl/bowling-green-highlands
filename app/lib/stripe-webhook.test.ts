@@ -5,6 +5,12 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import Stripe from "stripe";
 import {
+  getReserveExampleSlots,
+  RESERVE_EXAMPLE_DATE,
+} from "../../lib/reserve-example-availability";
+import { setOperatorDateAvailability } from "../../lib/operator-availability";
+import { parseRequestedSlotValue } from "../../lib/requested-slot";
+import {
   classifyStripeWebhook,
   processStripeWebhook,
   type StripeWebhookEventConstructor,
@@ -212,6 +218,101 @@ test("verified completed and async-success events persist paid status", async ()
       (requestRecord) => requestRecord.paymentStatus === "paid",
     ),
   );
+});
+
+test("verified payment changes only payment status and preserves exact-slot availability", async () => {
+  const requestStorePath = await createStorePath();
+  const availabilityStorePath = path.join(
+    path.dirname(requestStorePath),
+    "operator-availability.json",
+  );
+  const previousAvailabilityStorePath =
+    process.env.BGH_AVAILABILITY_STORE_PATH;
+  const previousRequestStorePath =
+    process.env.BGH_RESERVATION_REQUESTS_STORE_PATH;
+  const paymentRequest: ReservationRequestRecord = {
+    ...acceptedRequest,
+    id: "payment-integrity-id",
+    paymentStatus: "unpaid",
+    requestedDates: `${RESERVE_EXAMPLE_DATE} 09:00 to 09:30`,
+  };
+  const requestedSlot = parseRequestedSlotValue(paymentRequest.requestedDates);
+
+  assert.ok(requestedSlot);
+
+  process.env.BGH_AVAILABILITY_STORE_PATH = availabilityStorePath;
+  process.env.BGH_RESERVATION_REQUESTS_STORE_PATH = requestStorePath;
+
+  try {
+    await setOperatorDateAvailability(
+      RESERVE_EXAMPLE_DATE,
+      "available",
+      availabilityStorePath,
+    );
+    await writeReservationRequests([paymentRequest], requestStorePath);
+
+    const slotsBeforePayment = await getReserveExampleSlots();
+    const exactSlotBeforePayment = slotsBeforePayment.find(
+      (slot) =>
+        slot.date === requestedSlot.date &&
+        slot.startTime === requestedSlot.startTime &&
+        slot.endTime === requestedSlot.endTime,
+    );
+    const otherSlotBeforePayment = slotsBeforePayment.find(
+      (slot) =>
+        slot.date === requestedSlot.date &&
+        (slot.startTime !== requestedSlot.startTime ||
+          slot.endTime !== requestedSlot.endTime) &&
+        slot.status === "available",
+    );
+
+    assert.equal(exactSlotBeforePayment?.status, "unavailable");
+    assert.ok(otherSlotBeforePayment);
+
+    const webhookResult = await processSignedPayload(
+      {
+        clientReferenceId: paymentRequest.id,
+        eventId: "evt_test_payment_integrity",
+        metadata: { reservationRequestId: paymentRequest.id },
+      },
+      () => readReservationRequests(requestStorePath),
+      (requestId) => markReservationRequestPaid(requestId, requestStorePath),
+    );
+    const [persistedRequest] = await readReservationRequests(requestStorePath);
+    const persistedSlot = parseRequestedSlotValue(persistedRequest.requestedDates);
+    const slotsAfterPayment = await getReserveExampleSlots();
+    const exactSlotAfterPayment = slotsAfterPayment.find(
+      (slot) =>
+        slot.date === requestedSlot.date &&
+        slot.startTime === requestedSlot.startTime &&
+        slot.endTime === requestedSlot.endTime,
+    );
+    const otherSlotAfterPayment = slotsAfterPayment.find(
+      (slot) =>
+        slot.date === otherSlotBeforePayment.date &&
+        slot.startTime === otherSlotBeforePayment.startTime &&
+        slot.endTime === otherSlotBeforePayment.endTime,
+    );
+
+    assert.equal(webhookResult.kind, "verified_payment");
+    assert.equal(persistedRequest.paymentStatus, "paid");
+    assert.equal(persistedRequest.status, "accepted");
+    assert.deepEqual(persistedSlot, requestedSlot);
+    assert.equal(exactSlotAfterPayment?.status, "unavailable");
+    assert.equal(otherSlotAfterPayment?.status, "available");
+  } finally {
+    if (previousAvailabilityStorePath === undefined) {
+      delete process.env.BGH_AVAILABILITY_STORE_PATH;
+    } else {
+      process.env.BGH_AVAILABILITY_STORE_PATH = previousAvailabilityStorePath;
+    }
+
+    if (previousRequestStorePath === undefined) {
+      delete process.env.BGH_RESERVATION_REQUESTS_STORE_PATH;
+    } else {
+      process.env.BGH_RESERVATION_REQUESTS_STORE_PATH = previousRequestStorePath;
+    }
+  }
 });
 
 test("invalid, unpaid, and unsupported events do not call payment persistence", async () => {
