@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  getCanonicalPaymentPath,
   getCheckoutReturnState,
   getPaymentPageContent,
 } from "./payment-page-content";
@@ -41,10 +42,39 @@ test("returned Checkout state does not claim trusted payment completion", () => 
   assert.doesNotMatch(pageContent.notice ?? "", /paid|success|complete/i);
 });
 
-test("unknown Checkout return state uses the normal payable state", () => {
+test("unavailable Checkout state remains accepted and offers secure retry", () => {
   const pageContent = getPaymentPageContent(
     true,
-    getCheckoutReturnState("anything-else"),
+    getCheckoutReturnState("unavailable"),
+    "unpaid",
+  );
+
+  assert.equal(pageContent.title, "Payment could not be started.");
+  assert.equal(pageContent.description, "Your reservation request remains accepted.");
+  assert.equal(
+    pageContent.notice,
+    "No payment was made. Please try secure payment again.",
+  );
+  assert.equal(pageContent.primaryAction, "pay");
+  assert.equal(pageContent.reservationStatusLabel, "Accepted");
+  assert.equal(pageContent.paymentStatusLabel, "Not yet verified");
+});
+
+test("returned-state refresh targets the canonical payment URL", () => {
+  const pageContent = getPaymentPageContent(
+    true,
+    getCheckoutReturnState("returned"),
+    "unpaid",
+  );
+
+  assert.equal(pageContent.primaryAction, "refresh");
+  assert.equal(getCanonicalPaymentPath("request id"), "/pay/request%20id");
+});
+
+test("canonical unpaid state exposes secure payment", () => {
+  const pageContent = getPaymentPageContent(
+    true,
+    null,
     "unpaid",
   );
 
@@ -69,8 +99,8 @@ test("persisted paid status shows success without another payment action", () =>
   assert.doesNotMatch(pageContent.description, /reservation confirmed/i);
 });
 
-test("persisted paid status overrides returned and cancelled query states", () => {
-  for (const returnState of ["returned", "cancelled"] as const) {
+test("persisted paid status overrides returned, cancelled, and unavailable states", () => {
+  for (const returnState of ["returned", "cancelled", "unavailable"] as const) {
     const pageContent = getPaymentPageContent(
       true,
       getCheckoutReturnState(returnState),
