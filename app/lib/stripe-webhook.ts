@@ -1,6 +1,12 @@
 import type Stripe from "stripe";
-import { readReservationRequests } from "./reservation-requests";
-import type { ReservationRequestRecord } from "./reservation-requests";
+import {
+  markReservationRequestPaid,
+  readReservationRequests,
+} from "./reservation-requests";
+import type {
+  MarkReservationRequestPaidResult,
+  ReservationRequestRecord,
+} from "./reservation-requests";
 
 export const SUPPORTED_STRIPE_PAYMENT_EVENT_TYPES = [
   "checkout.session.completed",
@@ -17,6 +23,9 @@ export type StripeWebhookEventConstructor = (
 ) => Stripe.Event;
 
 type RequestLoader = () => Promise<ReservationRequestRecord[]>;
+type PaymentMarker = (
+  reservationRequestId: string,
+) => Promise<MarkReservationRequestPaidResult>;
 
 type ClassifyStripeWebhookInput = {
   constructEvent: StripeWebhookEventConstructor | null;
@@ -24,6 +33,10 @@ type ClassifyStripeWebhookInput = {
   rawBody: string;
   signature: string | null;
   webhookSecret: string | null | undefined;
+};
+
+type ProcessStripeWebhookInput = ClassifyStripeWebhookInput & {
+  markPaid?: PaymentMarker;
 };
 
 export type StripeWebhookClassification =
@@ -56,7 +69,10 @@ export type StripeWebhookClassification =
   | {
       httpStatus: 500 | 503;
       kind: "unavailable";
-      reason: "missing_configuration" | "reservation_store_unreadable";
+      reason:
+        | "missing_configuration"
+        | "reservation_store_unreadable"
+        | "reservation_store_unwritable";
     };
 
 function isSupportedPaymentEventType(
@@ -215,4 +231,39 @@ export async function classifyStripeWebhook({
     kind: "verified_payment",
     reservationRequestId: reservationRequest.id,
   };
+}
+
+export async function processStripeWebhook({
+  markPaid = markReservationRequestPaid,
+  ...classificationInput
+}: ProcessStripeWebhookInput): Promise<StripeWebhookClassification> {
+  const classification = await classifyStripeWebhook(classificationInput);
+
+  if (classification.kind !== "verified_payment") {
+    return classification;
+  }
+
+  let paymentUpdate: MarkReservationRequestPaidResult;
+
+  try {
+    paymentUpdate = await markPaid(classification.reservationRequestId);
+  } catch {
+    return {
+      httpStatus: 500,
+      kind: "unavailable",
+      reason: "reservation_store_unwritable",
+    };
+  }
+
+  if (paymentUpdate === "not_found" || paymentUpdate === "not_accepted") {
+    return {
+      eventId: classification.eventId,
+      eventType: classification.eventType,
+      httpStatus: 200,
+      kind: "ignored",
+      reason: paymentUpdate === "not_found" ? "not_found" : "not_accepted",
+    };
+  }
+
+  return classification;
 }

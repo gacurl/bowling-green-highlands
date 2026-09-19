@@ -1,15 +1,27 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { mkdir, mkdtemp } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import Stripe from "stripe";
 import {
   classifyStripeWebhook,
+  processStripeWebhook,
   type StripeWebhookEventConstructor,
 } from "./stripe-webhook";
 import {
   getCheckoutReturnState,
   getPaymentPageContent,
 } from "./payment-page-content";
-import type { ReservationRequestRecord } from "./reservation-requests";
+import {
+  markReservationRequestPaid,
+  readReservationRequests,
+  writeReservationRequests,
+} from "./reservation-requests";
+import type {
+  MarkReservationRequestPaidResult,
+  ReservationRequestRecord,
+} from "./reservation-requests";
 
 const API_KEY_PLACEHOLDER = "sk_test_change_this";
 const WEBHOOK_SECRET_PLACEHOLDER = "whsec_change_this";
@@ -100,6 +112,33 @@ async function classifySignedPayload(
   });
 }
 
+async function createStorePath() {
+  const directory = await mkdtemp(path.join(tmpdir(), "bgh-webhook-"));
+
+  return path.join(directory, "reservation-requests.json");
+}
+
+async function processSignedPayload(
+  payloadOptions: EventPayloadOptions = {},
+  loadRequests: () => Promise<ReservationRequestRecord[]> = async () => [
+    acceptedRequest,
+  ],
+  markPaid: (
+    reservationRequestId: string,
+  ) => Promise<MarkReservationRequestPaidResult> = async () => "updated",
+) {
+  const rawBody = createEventPayload(payloadOptions);
+
+  return processStripeWebhook({
+    constructEvent,
+    loadRequests,
+    markPaid,
+    rawBody,
+    signature: createSignature(rawBody),
+    webhookSecret: WEBHOOK_SECRET_PLACEHOLDER,
+  });
+}
+
 test("verifies a signed paid checkout.session.completed event", async () => {
   const result = await classifySignedPayload();
 
@@ -119,6 +158,111 @@ test("verifies a signed paid checkout.session.async_payment_succeeded event", as
 
   assert.equal(result.kind, "verified_payment");
   assert.equal(result.httpStatus, 200);
+});
+
+test("verified completed and async-success events persist paid status", async () => {
+  const storePath = await createStorePath();
+  const asyncRequest: ReservationRequestRecord = {
+    ...acceptedRequest,
+    id: "async-accepted-id",
+    paymentStatus: "unpaid",
+  };
+  await writeReservationRequests(
+    [
+      { ...acceptedRequest, paymentStatus: "unpaid" },
+      asyncRequest,
+    ],
+    storePath,
+  );
+  const loadRequests = () => readReservationRequests(storePath);
+  const markPaid = (requestId: string) =>
+    markReservationRequestPaid(requestId, storePath);
+
+  const completedResult = await processSignedPayload(
+    {},
+    loadRequests,
+    markPaid,
+  );
+  const asyncResult = await processSignedPayload(
+    {
+      clientReferenceId: asyncRequest.id,
+      eventId: "evt_test_async_persisted",
+      eventType: "checkout.session.async_payment_succeeded",
+      metadata: { reservationRequestId: asyncRequest.id },
+    },
+    loadRequests,
+    markPaid,
+  );
+  const persistedRequests = await readReservationRequests(storePath);
+
+  await mkdir(`${storePath}.tmp`);
+
+  const duplicateResult = await processSignedPayload(
+    {},
+    loadRequests,
+    markPaid,
+  );
+
+  assert.equal(completedResult.kind, "verified_payment");
+  assert.equal(asyncResult.kind, "verified_payment");
+  assert.equal(duplicateResult.kind, "verified_payment");
+  assert.equal(duplicateResult.httpStatus, 200);
+  assert.ok(
+    persistedRequests.every(
+      (requestRecord) => requestRecord.paymentStatus === "paid",
+    ),
+  );
+});
+
+test("invalid, unpaid, and unsupported events do not call payment persistence", async () => {
+  let mutationCount = 0;
+  const markPaid = async (): Promise<MarkReservationRequestPaidResult> => {
+    mutationCount += 1;
+    return "updated";
+  };
+  const invalidRawBody = createEventPayload();
+
+  const invalidResult = await processStripeWebhook({
+    constructEvent,
+    loadRequests: async () => [acceptedRequest],
+    markPaid,
+    rawBody: invalidRawBody,
+    signature: createSignature(invalidRawBody, {
+      secret: "whsec_different_placeholder",
+    }),
+    webhookSecret: WEBHOOK_SECRET_PLACEHOLDER,
+  });
+  const unpaidResult = await processSignedPayload(
+    { paymentStatus: "unpaid" },
+    async () => [acceptedRequest],
+    markPaid,
+  );
+  const unsupportedResult = await processSignedPayload(
+    { eventType: "customer.created", objectType: "customer" },
+    async () => [acceptedRequest],
+    markPaid,
+  );
+
+  assert.equal(invalidResult.httpStatus, 400);
+  assert.equal(unpaidResult.httpStatus, 200);
+  assert.equal(unsupportedResult.httpStatus, 200);
+  assert.equal(mutationCount, 0);
+});
+
+test("payment persistence failure returns 500 for Stripe retry", async () => {
+  const result = await processSignedPayload(
+    {},
+    async () => [acceptedRequest],
+    async () => {
+      throw new Error("store unavailable");
+    },
+  );
+
+  assert.deepEqual(result, {
+    httpStatus: 500,
+    kind: "unavailable",
+    reason: "reservation_store_unwritable",
+  });
 });
 
 test("returns 400 when Stripe-Signature is missing", async () => {

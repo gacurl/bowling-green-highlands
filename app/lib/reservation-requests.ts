@@ -5,6 +5,13 @@ import type { EventTypeValue } from "./event-type";
 
 export type ReservationRequestStatus = "pending" | "accepted" | "declined";
 export type ReservationRequestStatusUpdate = "accepted" | "declined";
+export type ReservationPaymentStatus = "unpaid" | "paid";
+
+export type MarkReservationRequestPaidResult =
+  | "updated"
+  | "already_paid"
+  | "not_found"
+  | "not_accepted";
 
 export type ReservationRequestRecord = {
   createdAt: string;
@@ -12,6 +19,7 @@ export type ReservationRequestRecord = {
   guestEmail: string;
   guestName: string;
   id: string;
+  paymentStatus?: ReservationPaymentStatus;
   requestNotes: string;
   requestedDates: string;
   status: ReservationRequestStatus;
@@ -73,6 +81,7 @@ function normalizeReservationRequestRecord(
     guestEmail: record.guestEmail,
     guestName: record.guestName,
     id: record.id,
+    paymentStatus: record.paymentStatus === "paid" ? "paid" : "unpaid",
     requestNotes: record.requestNotes,
     requestedDates: record.requestedDates,
     status: record.status,
@@ -155,6 +164,7 @@ export async function createReservationRequestRecord(
     guestEmail,
     guestName,
     id: randomUUID(),
+    paymentStatus: "unpaid",
     requestNotes,
     requestedDates,
     status: "pending",
@@ -209,6 +219,40 @@ export async function updateReservationRequestStatus(
       statusUpdatedAt: new Date().toISOString(),
     };
   });
+
+  await writeReservationRequests(updatedRequests, storePath);
+
+  return "updated";
+}
+
+export async function markReservationRequestPaid(
+  requestId: string,
+  storePath = getReservationRequestStorePath(),
+): Promise<MarkReservationRequestPaidResult> {
+  const requests = await readReservationRequests(storePath);
+  const requestIndex = requests.findIndex(
+    (requestRecord) => requestRecord.id === requestId,
+  );
+
+  if (requestIndex === -1) {
+    return "not_found";
+  }
+
+  const request = requests[requestIndex];
+
+  if (request.status !== "accepted") {
+    return "not_accepted";
+  }
+
+  if (request.paymentStatus === "paid") {
+    return "already_paid";
+  }
+
+  const updatedRequests = [...requests];
+  updatedRequests[requestIndex] = {
+    ...request,
+    paymentStatus: "paid",
+  };
 
   await writeReservationRequests(updatedRequests, storePath);
 
