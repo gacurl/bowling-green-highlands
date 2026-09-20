@@ -146,6 +146,8 @@ Never mix test and live keys, Prices, webhook endpoints, or webhook secrets.
 See the canonical
 [Stripe environment matrix](docs/production-deployment-gate.md#stripe-environment-isolation)
 before configuring any deployment.
+For planned or emergency credential changes, follow the
+[Stripe credential rotation runbook](docs/stripe-credential-rotation.md).
 
 ## Routes
 
