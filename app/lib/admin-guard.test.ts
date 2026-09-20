@@ -5,7 +5,16 @@ import {
   isProtectedAdminPath,
   shouldRedirectToAdminLogin,
 } from "./admin-guard";
-import { createAdminSessionCookieValue } from "./admin-session";
+import {
+  createAdminSessionCookieValue,
+  type AdminSessionCredential,
+} from "./admin-session";
+
+const ownerSession: AdminSessionCredential = {
+  kind: "owner",
+  sessionVersion: "synthetic-session-version",
+  signingKey: "synthetic-session-signing-key",
+};
 
 test("protects admin paths and excludes login endpoints", () => {
   assert.equal(isProtectedAdminPath("/"), false);
@@ -29,22 +38,21 @@ test("redirects when request has no valid admin session", async () => {
       "/admin/content",
       "",
       undefined,
-      "farm-admin-password",
+      ownerSession,
     ),
     "/admin/login?next=%2Fadmin%2Fcontent",
   );
 });
 
 test("does not redirect when request has a valid admin session", async () => {
-  const adminPassword = "farm-admin-password";
-  const cookieValue = await createAdminSessionCookieValue(adminPassword);
+  const cookieValue = await createAdminSessionCookieValue(ownerSession);
 
   assert.equal(
     await shouldRedirectToAdminLogin(
       "/admin/content",
       "",
       cookieValue,
-      adminPassword,
+      ownerSession,
     ),
     null,
   );

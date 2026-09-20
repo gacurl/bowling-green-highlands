@@ -6,7 +6,14 @@ import {
   getAdminSessionCookieOptions,
   isAdminPasswordConfigured,
   isValidAdminSessionCookieValue,
+  type AdminSessionCredential,
 } from "./admin-session";
+
+const ownerSession: AdminSessionCredential = {
+  kind: "owner",
+  sessionVersion: "synthetic-session-version-one",
+  signingKey: "synthetic-session-signing-key-one",
+};
 
 test("identifies configured admin password", () => {
   assert.equal(isAdminPasswordConfigured(undefined), false);
@@ -16,23 +23,29 @@ test("identifies configured admin password", () => {
 });
 
 test("validates signed admin session cookie values", async () => {
-  const adminPassword = "farm-admin-password";
-  const cookieValue = await createAdminSessionCookieValue(adminPassword);
+  const cookieValue = await createAdminSessionCookieValue(ownerSession);
 
   assert.equal(
-    await isValidAdminSessionCookieValue(cookieValue, adminPassword),
+    await isValidAdminSessionCookieValue(cookieValue, ownerSession),
     true,
   );
   assert.equal(
-    await isValidAdminSessionCookieValue(cookieValue, "different-password"),
+    await isValidAdminSessionCookieValue(cookieValue, {
+      ...ownerSession,
+      sessionVersion: "synthetic-session-version-two",
+    }),
     false,
   );
   assert.equal(
-    await isValidAdminSessionCookieValue("tampered-cookie-value", adminPassword),
+    await isValidAdminSessionCookieValue("tampered-cookie-value", ownerSession),
     false,
   );
   assert.equal(
-    await isValidAdminSessionCookieValue(undefined, adminPassword),
+    await isValidAdminSessionCookieValue(undefined, ownerSession),
+    false,
+  );
+  assert.equal(
+    await isValidAdminSessionCookieValue(cookieValue, null),
     false,
   );
 });

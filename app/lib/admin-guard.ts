@@ -1,6 +1,7 @@
 import {
   ADMIN_SESSION_COOKIE_NAME,
   isValidAdminSessionCookieValue,
+  type AdminSessionCredential,
 } from "./admin-session";
 
 export function isProtectedAdminPath(pathname: string) {
@@ -19,22 +20,22 @@ export function getAdminRedirectPath(pathname: string, search: string) {
 
 export async function hasValidAdminSessionFromRequest(
   cookieValue: string | undefined,
-  adminPassword: string | undefined,
+  credential: AdminSessionCredential | null,
 ) {
-  return isValidAdminSessionCookieValue(cookieValue, adminPassword);
+  return isValidAdminSessionCookieValue(cookieValue, credential);
 }
 
 export async function shouldRedirectToAdminLogin(
   pathname: string,
   search: string,
   cookieValue: string | undefined,
-  adminPassword: string | undefined,
+  credential: AdminSessionCredential | null,
 ) {
   if (!isProtectedAdminPath(pathname)) {
     return null;
   }
 
-  if (await hasValidAdminSessionFromRequest(cookieValue, adminPassword)) {
+  if (await hasValidAdminSessionFromRequest(cookieValue, credential)) {
     return null;
   }
 

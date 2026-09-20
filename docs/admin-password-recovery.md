@@ -25,7 +25,8 @@ only in the protected hosting configuration.
 2. Access the protected production hosting or configuration environment.
    Vercel is the current host, but the procedure remains the same on another
    server-capable host.
-3. Replace `ADMIN_PASSWORD` with the temporary recovery credential directly in
+3. Replace `ADMIN_PASSWORD` with the temporary recovery credential and set
+   `BGH_ADMIN_RECOVERY_MODE` to `enabled` directly in
    the protected configuration without copying it into source code, notes, or
    communication records.
 4. Restart or redeploy the application so the running application loads the
@@ -39,26 +40,37 @@ only in the protected hosting configuration.
    password-change capability tracked in Issue #236 is available, the owner
    uses it to establish their own Admin password; Issue #228 does not implement
    that workflow.
-9. Remove any temporary maintainer access when recovery is complete. The
-   application and hosting configuration must not retain a maintainer password,
-   bypass, or backdoor.
+9. Set `BGH_ADMIN_RECOVERY_MODE` back to `disabled`, restart or redeploy, and
+   remove any temporary maintainer access. The application and hosting
+   configuration must not retain a maintainer password, bypass, or backdoor.
+
+Do not delete or edit the owner credential file to enter recovery mode. A
+malformed or unreadable credential file fails closed rather than enabling the
+deployment credential.
+
+The same explicit recovery-mode gate applies to first-time bootstrap. If the
+owner credential file is missing while `BGH_ADMIN_RECOVERY_MODE` is disabled,
+Admin authentication fails closed; `ADMIN_PASSWORD` is not activated
+automatically.
 
 ## Emergency exposure
 
 If compromise is suspected, obtain the owner's authorization and then:
 
-1. Replace `ADMIN_PASSWORD` immediately in the protected production
-   configuration.
+1. Replace `ADMIN_PASSWORD` and set `BGH_ADMIN_RECOVERY_MODE` to `enabled`
+   immediately in the protected production configuration.
 2. Restart or redeploy immediately so the replacement takes effect.
 3. Confirm that the previous credential and sessions created from it no longer
    authorize Admin access.
 4. Check Git history, logs, and documentation for exposure without reproducing
    the credential.
-5. Return control to the owner and remove any temporary maintainer access.
+5. Return control to the owner, disable recovery mode, restart or redeploy, and
+   remove any temporary maintainer access.
 
 ## Local development
 
 Local development is separate from production recovery. Replace
-`ADMIN_PASSWORD` only in the ignored `.env.local` file, then restart the local
-development server. Never put a real password in `.env.example` or commit a
-local environment file.
+`ADMIN_PASSWORD` only in the ignored `.env.local` file, explicitly enable
+`BGH_ADMIN_RECOVERY_MODE`, then restart the local development server. Disable
+recovery mode after bootstrap or recovery is complete. Never put a real
+password in `.env.example` or commit a local environment file.
