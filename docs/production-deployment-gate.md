@@ -11,6 +11,35 @@ Production remains:
 This repository does not replace Vercel and does not add a parallel deployment system.
 Vercel remains responsible for the production deployment that is created after changes merge to `main`.
 
+## Stripe Environment Isolation
+
+Stripe test payment integration exists. Configure each environment as one
+matched set; never combine test and live Stripe resources.
+
+| Environment | `NEXT_PUBLIC_APP_URL` | `STRIPE_SECRET_KEY` and `STRIPE_CHECKOUT_PRICE_ID` | Webhook endpoint and `STRIPE_WEBHOOK_SECRET` | Payment policy |
+| --- | --- | --- | --- | --- |
+| Local Development | Exact local application origin | Matching Stripe test key and test Price | Test endpoint targeting the local `/api/stripe/webhook`; use that endpoint's signing secret | Test only |
+| Vercel Preview | Exact Preview origin used for Stripe returns | Matching Stripe test key and test Price in the Preview environment scope | Matching test endpoint targeting the Preview `/api/stripe/webhook`; use that endpoint's signing secret in Preview scope | Test only |
+| Vercel Production | Exact production origin | Before approval: unset to disable payment, or a matching test key and test Price for explicitly test-only validation. After approval: matching live key and live Price in Production scope | Before approval: unset when disabled, or the matching test endpoint secret when explicitly test-only. After approval: live endpoint targeting production and that endpoint's signing secret | Live only after explicit go-live approval |
+
+Operational rules:
+
+- The secret key, Price ID, webhook endpoint and secret, and application URL
+  must all belong to the environment being exercised.
+- Test and live Stripe resources must never be mixed.
+- Every webhook signing secret belongs to one specific Stripe endpoint and
+  environment. Do not reuse it for another endpoint or environment.
+- Keep Stripe secret keys and webhook secrets server-side. Never use a
+  `NEXT_PUBLIC_` variable for either secret.
+- Before explicit go-live approval, Production payment must remain disabled or
+  be clearly operated as test-only with a complete matching test resource set.
+- After approval, replace the complete Production test set with a complete live
+  set; do not replace individual values piecemeal.
+
+The local placeholder format and variable names are documented in
+[`.env.example`](../.env.example). The concise setup summary is in the
+[README](../README.md#stripe-environment-isolation).
+
 ## Required Pull Request Checks
 
 Before merging to `main`, branch protection requires passing checks for:
@@ -54,7 +83,9 @@ After Vercel reports a successful production deployment, run the production smok
 The smoke validation must preserve the current product truth:
 
 - reservation requests are not bookings
-- there is no live payment behavior
+- Stripe payment never confirms a reservation
+- Production payment remains disabled or test-only until explicit go-live approval
+- any approved live payment smoke uses only the complete matching Production Stripe set
 - there is no automatic confirmation
 - there is no automatic availability locking
 - availability remains day-level and operator-controlled
