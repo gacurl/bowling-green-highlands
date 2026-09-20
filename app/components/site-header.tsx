@@ -1,13 +1,18 @@
 import Link from "next/link";
 import { cookies } from "next/headers";
+import { resolveAdminSessionCredential } from "../lib/admin-auth";
 import { shouldShowAdminNavigation } from "../lib/admin-navigation";
 import { ADMIN_SESSION_COOKIE_NAME } from "../lib/admin-session";
 
 export async function SiteHeader() {
   const cookieStore = await cookies();
+  const sessionCredential = await resolveAdminSessionCredential({
+    adminPassword: process.env.ADMIN_PASSWORD,
+    recoveryMode: process.env.BGH_ADMIN_RECOVERY_MODE,
+  });
   const showAdminNavigation = await shouldShowAdminNavigation(
     cookieStore.get(ADMIN_SESSION_COOKIE_NAME)?.value,
-    process.env.ADMIN_PASSWORD,
+    sessionCredential,
   );
 
   return (

@@ -19,6 +19,8 @@
 /data/operator-availability.json.tmp
 /data/reservation-requests.json
 /data/reservation-requests.json.tmp
+/data/admin-owner-credential.json
+/data/admin-owner-credential.json.tmp
 
 # next.js
 /.next/

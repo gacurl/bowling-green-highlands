@@ -122,11 +122,17 @@ The app currently expects these variables in `.env.local`:
   Sender identity used when the app forwards reservation requests.
   Example: `reservations@example.com`
 - `ADMIN_PASSWORD`
-  Password required for admin session access to `/admin` routes.
+  Bootstrap and owner-authorized break-glass credential. After owner credential
+  initialization it is not accepted during normal operation.
   Example: `change-this-admin-password`
   For owner-authorized break-glass recovery only, see the
   [Admin password recovery guide](docs/admin-password-recovery.md). Normal owner
   password changes are tracked separately in Issue #236.
+- `BGH_ADMIN_RECOVERY_MODE`
+  Keep `disabled` for normal operation. Set to `enabled` only during explicit
+  first-time bootstrap or an owner-authorized break-glass recovery window.
+- `BGH_ADMIN_CREDENTIAL_STORE_PATH`
+  Optional durable path override for the server-only owner credential state.
 - `STRIPE_SECRET_KEY`
   Server-only Stripe test secret key for local development.
 - `STRIPE_CHECKOUT_PRICE_ID`
@@ -136,6 +142,25 @@ The app currently expects these variables in `.env.local`:
 
 See [.env.example](.env.example)
 for the current starter values.
+
+## Admin Credential Storage
+
+Before the owner credential is initialized, `ADMIN_PASSWORD` provides the
+bootstrap login only while `BGH_ADMIN_RECOVERY_MODE` is explicitly set to
+`enabled`. With recovery mode disabled, missing credential state fails closed.
+After initialization, normal Admin login uses only the stored owner password
+hash; `ADMIN_PASSWORD` remains rejected unless recovery mode is explicitly
+enabled.
+
+The owner credential defaults to `data/admin-owner-credential.json` and can be
+relocated with `BGH_ADMIN_CREDENTIAL_STORE_PATH`. The file contains a salted
+scrypt hash and session-generation material, never the plaintext password. It
+must be kept in durable server-only storage. Missing state permits bootstrap
+only during explicit recovery mode; malformed or unreadable state always fails
+closed and is not overwritten.
+
+Credential replacement support is server-side foundation for Issue #239. This
+issue does not add a password-change page or form.
 
 ## Stripe Environment Isolation
 

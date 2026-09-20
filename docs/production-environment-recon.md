@@ -33,6 +33,7 @@ Recommendation outcome: **Insufficient evidence — complete the listed account 
   - `.env*` is ignored, with `.env.example` intentionally tracked.
   - `.next/`, `out/`, `build/`, `.test-build/`, `node_modules/`, and generated TypeScript build artifacts are ignored.
   - `data/operator-availability.json` and its temp file are ignored.
+  - `data/admin-owner-credential.json` and its temp file are ignored.
   - `data/reservation-requests.json` and `data/homepage-content.json` are not currently ignored by name. Production should avoid writing state inside the repository checkout, and any future repo-local data file policy should be handled in a separate implementation issue.
 - Required environment variables from `.env.example` and code:
   - `NEXT_PUBLIC_APP_URL`
@@ -44,6 +45,9 @@ Recommendation outcome: **Insufficient evidence — complete the listed account 
   - `BGH_AVAILABILITY_STORE_PATH`
   - `BGH_RESERVATION_REQUESTS_STORE_PATH`
   - `BGH_HOMEPAGE_CONTENT_STORE_PATH`
+  - `BGH_ADMIN_CREDENTIAL_STORE_PATH`
+- Optional break-glass control:
+  - `BGH_ADMIN_RECOVERY_MODE`
 
 ## 3. Current persistence model
 
@@ -63,15 +67,29 @@ Current file-backed persistence:
   - Default: `data/homepage-content.json`
   - Override: `BGH_HOMEPAGE_CONTENT_STORE_PATH`
   - Missing file returns bundled default content.
+- Admin owner credential:
+  - Default: `data/admin-owner-credential.json`
+  - Override: `BGH_ADMIN_CREDENTIAL_STORE_PATH`
+  - Missing file permits `ADMIN_PASSWORD` bootstrap only while
+    `BGH_ADMIN_RECOVERY_MODE` is explicitly `enabled`.
+  - Malformed or unreadable state fails closed.
 
 Writes use a temporary file and rename pattern. That is reasonable for a single-process MVP on a durable filesystem, but it is still file-backed JSON with last-write-wins behavior. It is not multi-instance safe and should not be used on multiple app instances sharing traffic unless the storage and locking model are explicitly designed.
 
 Admin session behavior:
 
-- Admin auth uses `ADMIN_PASSWORD`.
+- Before owner credential initialization, Admin auth uses `ADMIN_PASSWORD` for
+  bootstrap only while `BGH_ADMIN_RECOVERY_MODE` is explicitly `enabled`.
+- Missing credential state with recovery mode disabled fails closed.
+- After initialization, normal Admin auth uses only the stored owner credential.
+- `ADMIN_PASSWORD` is accepted with initialized state only when
+  `BGH_ADMIN_RECOVERY_MODE` is explicitly `enabled` for owner-authorized
+  break-glass recovery.
 - A signed `bgh_admin_session` cookie is created after login.
 - The cookie is `httpOnly`, `sameSite: "lax"`, path `/`, and `secure` when `NODE_ENV === "production"`.
-- Sessions are cookie-based, not server-memory-based. Restarting the app does not inherently invalidate an existing session as long as `ADMIN_PASSWORD` remains unchanged.
+- Sessions are cookie-based, not server-memory-based. Owner credential
+  replacement rotates persisted session-generation material and invalidates
+  cookies created from the previous state across restarts.
 
 Confirmation page behavior:
 
@@ -234,7 +252,10 @@ For the current codebase, the lowest-risk production shape is:
 - Node.js `>=20.9.0`.
 - `npm ci`, then `npm run build`, then `npm run start`.
 - all secrets and production env vars configured outside Git.
-- `BGH_AVAILABILITY_STORE_PATH`, `BGH_RESERVATION_REQUESTS_STORE_PATH`, and `BGH_HOMEPAGE_CONTENT_STORE_PATH` pointed to a durable backed-up directory outside the app release directory.
+- `BGH_AVAILABILITY_STORE_PATH`, `BGH_RESERVATION_REQUESTS_STORE_PATH`,
+  `BGH_HOMEPAGE_CONTENT_STORE_PATH`, and
+  `BGH_ADMIN_CREDENTIAL_STORE_PATH` pointed to a durable backed-up directory
+  outside the app release directory.
 - backups verified before launch.
 - SSL enabled before admin login or guest form traffic.
 - no horizontal scaling until persistence is moved away from local JSON or explicit locking is added in a separate approved issue.

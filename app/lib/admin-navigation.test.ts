@@ -1,21 +1,23 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { shouldShowAdminNavigation } from "./admin-navigation";
-import { createAdminSessionCookieValue } from "./admin-session";
+import {
+  createAdminSessionCookieValue,
+  type AdminSessionCredential,
+} from "./admin-session";
+
+const ownerSession: AdminSessionCredential = {
+  kind: "owner",
+  sessionVersion: "synthetic-session-version",
+  signingKey: "synthetic-session-signing-key",
+};
 
 test("hides admin navigation for public visitors", async () => {
-  assert.equal(
-    await shouldShowAdminNavigation(undefined, "farm-admin-password"),
-    false,
-  );
+  assert.equal(await shouldShowAdminNavigation(undefined, ownerSession), false);
 });
 
 test("shows admin navigation for authenticated admins", async () => {
-  const adminPassword = "farm-admin-password";
-  const cookieValue = await createAdminSessionCookieValue(adminPassword);
+  const cookieValue = await createAdminSessionCookieValue(ownerSession);
 
-  assert.equal(
-    await shouldShowAdminNavigation(cookieValue, adminPassword),
-    true,
-  );
+  assert.equal(await shouldShowAdminNavigation(cookieValue, ownerSession), true);
 });

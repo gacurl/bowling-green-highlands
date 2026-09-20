@@ -1,12 +1,18 @@
 export const ADMIN_SESSION_COOKIE_NAME = "bgh_admin_session";
-const ADMIN_SESSION_PAYLOAD = "bgh-admin-session-v1";
+const ADMIN_SESSION_PAYLOAD = "bgh-admin-session-v2";
 const textEncoder = new TextEncoder();
 const ADMIN_SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 7;
 
-async function signAdminSessionPayload(adminPassword: string) {
+export type AdminSessionCredential = {
+  kind: "bootstrap" | "owner" | "recovery";
+  sessionVersion: string;
+  signingKey: string;
+};
+
+async function signAdminSessionPayload(credential: AdminSessionCredential) {
   const key = await crypto.subtle.importKey(
     "raw",
-    textEncoder.encode(adminPassword),
+    textEncoder.encode(credential.signingKey),
     { name: "HMAC", hash: "SHA-256" },
     false,
     ["sign"],
@@ -14,7 +20,9 @@ async function signAdminSessionPayload(adminPassword: string) {
   const signatureBuffer = await crypto.subtle.sign(
     "HMAC",
     key,
-    textEncoder.encode(ADMIN_SESSION_PAYLOAD),
+    textEncoder.encode(
+      `${ADMIN_SESSION_PAYLOAD}:${credential.kind}:${credential.sessionVersion}`,
+    ),
   );
 
   return Buffer.from(signatureBuffer).toString("hex");
@@ -26,22 +34,21 @@ export function isAdminPasswordConfigured(
   return typeof adminPassword === "string" && adminPassword.trim().length > 0;
 }
 
-export async function createAdminSessionCookieValue(adminPassword: string) {
-  return signAdminSessionPayload(adminPassword);
+export async function createAdminSessionCookieValue(
+  credential: AdminSessionCredential,
+) {
+  return signAdminSessionPayload(credential);
 }
 
 export async function isValidAdminSessionCookieValue(
   cookieValue: string | undefined,
-  adminPassword: string | undefined,
+  credential: AdminSessionCredential | null,
 ) {
-  if (
-    typeof cookieValue !== "string" ||
-    !isAdminPasswordConfigured(adminPassword)
-  ) {
+  if (typeof cookieValue !== "string" || !credential) {
     return false;
   }
 
-  const expectedSignature = await signAdminSessionPayload(adminPassword);
+  const expectedSignature = await signAdminSessionPayload(credential);
   return cookieValue === expectedSignature;
 }
 
