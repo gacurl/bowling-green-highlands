@@ -47,7 +47,38 @@ export function getAdminLoginErrorMessage(error: string | undefined) {
     return "Admin login is not ready. Ask the site operator to check setup.";
   }
 
+  if (error === "session_invalid") {
+    return "Your Admin session is no longer valid. Sign in again.";
+  }
+
+  if (error === "credential_unavailable") {
+    return "Admin password access is unavailable. Ask the site operator to check setup.";
+  }
+
   return null;
+}
+
+export function getAdminLoginStatusMessage(changed: string | undefined) {
+  return changed === "1"
+    ? "Password changed. Sign in again with your new password."
+    : null;
+}
+
+export function getAdminPasswordChangeErrorMessage(error: string | undefined) {
+  switch (error) {
+    case "incorrect_current_password":
+      return "Current password did not match. No change was made.";
+    case "confirmation_mismatch":
+      return "New password and confirmation must match. No change was made.";
+    case "invalid_new_password":
+      return "Enter a new password that is not blank and has no spaces at the beginning or end.";
+    case "persistence_failed":
+      return "Password could not be changed. Your current password still works. Try again.";
+    case "owner_mode_required":
+      return "Password changes are available only after signing in with the owner password during normal operation.";
+    default:
+      return null;
+  }
 }
 
 export function getAdminActionErrorMessage(

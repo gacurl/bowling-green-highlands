@@ -1,13 +1,17 @@
 import { PageShell } from "../../components/page-shell";
-import { getAdminLoginErrorMessage } from "../../lib/operational-error-messages";
+import {
+  getAdminLoginErrorMessage,
+  getAdminLoginStatusMessage,
+} from "../../lib/operational-error-messages";
 
 type AdminLoginPageProps = {
-  searchParams?: Promise<{ error?: string; next?: string }>;
+  searchParams?: Promise<{ changed?: string; error?: string; next?: string }>;
 };
 
 export default async function AdminLoginPage({ searchParams }: AdminLoginPageProps) {
   const resolvedSearchParams = searchParams ? await searchParams : {};
   const errorMessage = getAdminLoginErrorMessage(resolvedSearchParams.error);
+  const statusMessage = getAdminLoginStatusMessage(resolvedSearchParams.changed);
   const next = resolvedSearchParams.next ?? "/admin";
 
   return (
@@ -21,6 +25,14 @@ export default async function AdminLoginPage({ searchParams }: AdminLoginPagePro
           method="post"
           className="w-full rounded-3xl border border-[#D8CDBA] bg-[#FDF8EF] p-4 shadow-sm sm:p-6"
         >
+          {statusMessage ? (
+            <p
+              role="status"
+              className="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800"
+            >
+              {statusMessage}
+            </p>
+          ) : null}
           {errorMessage ? (
             <p
               role="alert"

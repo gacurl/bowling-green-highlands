@@ -339,7 +339,7 @@ test("failed atomic replacement preserves the existing valid credential", async 
 
   assert.equal(
     (await replaceAdminOwnerCredential(SECOND_OWNER_PASSWORD, storePath)).kind,
-    "unavailable",
+    "persistence_failed",
   );
   assert.equal(await readFile(storePath, "utf8"), originalCredential);
   assert.equal(

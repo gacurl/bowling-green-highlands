@@ -126,8 +126,8 @@ The app currently expects these variables in `.env.local`:
   initialization it is not accepted during normal operation.
   Example: `change-this-admin-password`
   For owner-authorized break-glass recovery only, see the
-  [Admin password recovery guide](docs/admin-password-recovery.md). Normal owner
-  password changes are tracked separately in Issue #236.
+  [Admin password recovery guide](docs/admin-password-recovery.md). Authenticated
+  owners change their normal password from the private Admin area.
 - `BGH_ADMIN_RECOVERY_MODE`
   Keep `disabled` for normal operation. Set to `enabled` only during explicit
   first-time bootstrap or an owner-authorized break-glass recovery window.
@@ -159,8 +159,10 @@ must be kept in durable server-only storage. Missing state permits bootstrap
 only during explicit recovery mode; malformed or unreadable state always fails
 closed and is not overwritten.
 
-Credential replacement support is server-side foundation for Issue #239. This
-issue does not add a password-change page or form.
+Authenticated owners can use **Change password** from the private Admin area.
+The action verifies the current owner password, rotates the stored credential
+and session state, clears the current session, and requires a new sign-in.
+Recovery-mode sessions cannot use the normal owner password-change action.
 
 ## Stripe Environment Isolation
 
