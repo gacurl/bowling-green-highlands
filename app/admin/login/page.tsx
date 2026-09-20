@@ -5,13 +5,20 @@ import {
 } from "../../lib/operational-error-messages";
 
 type AdminLoginPageProps = {
-  searchParams?: Promise<{ changed?: string; error?: string; next?: string }>;
+  searchParams?: Promise<{
+    changed?: string;
+    error?: string;
+    next?: string;
+    setup?: string;
+  }>;
 };
 
 export default async function AdminLoginPage({ searchParams }: AdminLoginPageProps) {
   const resolvedSearchParams = searchParams ? await searchParams : {};
   const errorMessage = getAdminLoginErrorMessage(resolvedSearchParams.error);
-  const statusMessage = getAdminLoginStatusMessage(resolvedSearchParams.changed);
+  const statusMessage = getAdminLoginStatusMessage(
+    resolvedSearchParams.setup === "1" ? "setup" : resolvedSearchParams.changed,
+  );
   const next = resolvedSearchParams.next ?? "/admin";
 
   return (

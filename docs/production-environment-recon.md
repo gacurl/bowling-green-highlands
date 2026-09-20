@@ -48,6 +48,8 @@ Recommendation outcome: **Insufficient evidence — complete the listed account 
   - `BGH_ADMIN_CREDENTIAL_STORE_PATH`
 - Optional break-glass control:
   - `BGH_ADMIN_RECOVERY_MODE`
+- Optional first-time initialization control:
+  - `BGH_ADMIN_BOOTSTRAP_MODE`
 
 ## 3. Current persistence model
 
@@ -71,7 +73,7 @@ Current file-backed persistence:
   - Default: `data/admin-owner-credential.json`
   - Override: `BGH_ADMIN_CREDENTIAL_STORE_PATH`
   - Missing file permits `ADMIN_PASSWORD` bootstrap only while
-    `BGH_ADMIN_RECOVERY_MODE` is explicitly `enabled`.
+    `BGH_ADMIN_BOOTSTRAP_MODE` is explicitly `enabled`.
   - Malformed or unreadable state fails closed.
 
 Writes use a temporary file and rename pattern. That is reasonable for a single-process MVP on a durable filesystem, but it is still file-backed JSON with last-write-wins behavior. It is not multi-instance safe and should not be used on multiple app instances sharing traffic unless the storage and locking model are explicitly designed.
@@ -79,9 +81,11 @@ Writes use a temporary file and rename pattern. That is reasonable for a single-
 Admin session behavior:
 
 - Before owner credential initialization, Admin auth uses `ADMIN_PASSWORD` for
-  bootstrap only while `BGH_ADMIN_RECOVERY_MODE` is explicitly `enabled`.
-- Missing credential state with recovery mode disabled fails closed.
+  bootstrap only while `BGH_ADMIN_BOOTSTRAP_MODE` is explicitly `enabled`.
+- Missing credential state with bootstrap mode disabled fails closed.
 - After initialization, normal Admin auth uses only the stored owner credential.
+- Bootstrap mode is ignored after initialization and should be disabled or
+  removed from hosting configuration after first-time setup.
 - `ADMIN_PASSWORD` is accepted with initialized state only when
   `BGH_ADMIN_RECOVERY_MODE` is explicitly `enabled` for owner-authorized
   break-glass recovery.

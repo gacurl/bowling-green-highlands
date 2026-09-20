@@ -48,10 +48,9 @@ Do not delete or edit the owner credential file to enter recovery mode. A
 malformed or unreadable credential file fails closed rather than enabling the
 deployment credential.
 
-The same explicit recovery-mode gate applies to first-time bootstrap. If the
-owner credential file is missing while `BGH_ADMIN_RECOVERY_MODE` is disabled,
-Admin authentication fails closed; `ADMIN_PASSWORD` is not activated
-automatically.
+Recovery mode is separate from first-time bootstrap. First-time setup uses
+`BGH_ADMIN_BOOTSTRAP_MODE`; this recovery procedure must not be used as the
+normal initialization path.
 
 ## Emergency exposure
 
@@ -72,5 +71,5 @@ If compromise is suspected, obtain the owner's authorization and then:
 Local development is separate from production recovery. Replace
 `ADMIN_PASSWORD` only in the ignored `.env.local` file, explicitly enable
 `BGH_ADMIN_RECOVERY_MODE`, then restart the local development server. Disable
-recovery mode after bootstrap or recovery is complete. Never put a real
-password in `.env.example` or commit a local environment file.
+recovery mode after recovery is complete. Never put a real password in
+`.env.example` or commit a local environment file.

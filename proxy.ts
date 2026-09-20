@@ -9,6 +9,7 @@ export async function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
   const sessionCredential = await resolveAdminSessionCredential({
     adminPassword: process.env.ADMIN_PASSWORD,
+    bootstrapMode: process.env.BGH_ADMIN_BOOTSTRAP_MODE,
     recoveryMode: process.env.BGH_ADMIN_RECOVERY_MODE,
   });
   const redirectPath = await shouldRedirectToAdminLogin(

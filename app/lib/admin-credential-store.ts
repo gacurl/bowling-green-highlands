@@ -13,6 +13,8 @@ import {
 
 export const ADMIN_CREDENTIAL_STORE_PATH_ENV_NAME =
   "BGH_ADMIN_CREDENTIAL_STORE_PATH";
+export const ADMIN_BOOTSTRAP_MODE_ENV_NAME = "BGH_ADMIN_BOOTSTRAP_MODE";
+export const ADMIN_BOOTSTRAP_MODE_ENABLED_VALUE = "enabled";
 export const ADMIN_RECOVERY_MODE_ENV_NAME = "BGH_ADMIN_RECOVERY_MODE";
 export const ADMIN_RECOVERY_MODE_ENABLED_VALUE = "enabled";
 
@@ -50,6 +52,7 @@ export type AdminOwnerCredentialReadResult =
 
 type AdminAuthenticationOptions = {
   adminPassword: string | undefined;
+  bootstrapMode?: string;
   recoveryMode: string | undefined;
   storePath?: string;
 };
@@ -63,6 +66,13 @@ export type ReplaceAdminOwnerCredentialResult =
   | { kind: "invalid_password" }
   | { kind: "persistence_failed" }
   | { kind: "replaced"; sessionVersion: string }
+  | { kind: "unavailable" };
+
+export type InitializeAdminOwnerCredentialResult =
+  | { kind: "already_initialized" }
+  | { kind: "initialized"; sessionVersion: string }
+  | { kind: "invalid_password" }
+  | { kind: "persistence_failed" }
   | { kind: "unavailable" };
 
 function getAdminOwnerCredentialStorePath() {
@@ -212,6 +222,10 @@ function isRecoveryModeEnabled(recoveryMode: string | undefined) {
   return recoveryMode === ADMIN_RECOVERY_MODE_ENABLED_VALUE;
 }
 
+function isBootstrapModeEnabled(bootstrapMode: string | undefined) {
+  return bootstrapMode === ADMIN_BOOTSTRAP_MODE_ENABLED_VALUE;
+}
+
 async function createStoredAdminOwnerCredential(
   password: string,
 ): Promise<StoredAdminOwnerCredential> {
@@ -323,10 +337,42 @@ export async function replaceAdminOwnerCredential(
   }
 }
 
+export async function initializeAdminOwnerCredential(
+  password: string,
+  storePath = getAdminOwnerCredentialStorePath(),
+): Promise<InitializeAdminOwnerCredentialResult> {
+  if (!isAdminPasswordConfigured(password)) {
+    return { kind: "invalid_password" };
+  }
+
+  const existingCredential = await readAdminOwnerCredential(storePath);
+
+  if (existingCredential.kind === "unavailable") {
+    return { kind: "unavailable" };
+  }
+
+  if (existingCredential.kind === "ready") {
+    return { kind: "already_initialized" };
+  }
+
+  try {
+    const credential = await createStoredAdminOwnerCredential(password);
+    await writeAdminOwnerCredential(credential, storePath);
+
+    return {
+      kind: "initialized",
+      sessionVersion: credential.session.version,
+    };
+  } catch {
+    return { kind: "persistence_failed" };
+  }
+}
+
 export async function authenticateAdminPassword(
   password: string,
   {
     adminPassword,
+    bootstrapMode,
     recoveryMode,
     storePath = getAdminOwnerCredentialStorePath(),
   }: AdminAuthenticationOptions,
@@ -337,9 +383,28 @@ export async function authenticateAdminPassword(
     return { kind: "unavailable" };
   }
 
+  if (isRecoveryModeEnabled(recoveryMode)) {
+    if (!isAdminPasswordConfigured(adminPassword)) {
+      return { kind: "unavailable" };
+    }
+
+    return compareSecretStrings(password, adminPassword)
+      ? {
+          kind: "authenticated",
+          session: toEnvironmentSessionCredential(
+            "recovery",
+            adminPassword,
+            credentialState.kind === "ready"
+              ? credentialState.credential.session.version
+              : "recovery",
+          ),
+        }
+      : { kind: "invalid" };
+  }
+
   if (credentialState.kind === "missing") {
     if (
-      !isRecoveryModeEnabled(recoveryMode) ||
+      !isBootstrapModeEnabled(bootstrapMode) ||
       !isAdminPasswordConfigured(adminPassword)
     ) {
       return { kind: "unavailable" };
@@ -357,23 +422,6 @@ export async function authenticateAdminPassword(
       : { kind: "invalid" };
   }
 
-  if (isRecoveryModeEnabled(recoveryMode)) {
-    if (!isAdminPasswordConfigured(adminPassword)) {
-      return { kind: "unavailable" };
-    }
-
-    return compareSecretStrings(password, adminPassword)
-      ? {
-          kind: "authenticated",
-          session: toEnvironmentSessionCredential(
-            "recovery",
-            adminPassword,
-            credentialState.credential.session.version,
-          ),
-        }
-      : { kind: "invalid" };
-  }
-
   return (await verifyAdminOwnerPassword(password, credentialState.credential))
     ? {
         kind: "authenticated",
@@ -384,6 +432,7 @@ export async function authenticateAdminPassword(
 
 export async function resolveAdminSessionCredential({
   adminPassword,
+  bootstrapMode,
   recoveryMode,
   storePath = getAdminOwnerCredentialStorePath(),
 }: AdminAuthenticationOptions): Promise<AdminSessionCredential | null> {
@@ -393,23 +442,25 @@ export async function resolveAdminSessionCredential({
     return null;
   }
 
-  if (credentialState.kind === "missing") {
-    return isRecoveryModeEnabled(recoveryMode) &&
-      isAdminPasswordConfigured(adminPassword)
-      ? toEnvironmentSessionCredential(
-          "bootstrap",
-          adminPassword,
-          "bootstrap",
-        )
-      : null;
-  }
-
   if (isRecoveryModeEnabled(recoveryMode)) {
     return isAdminPasswordConfigured(adminPassword)
       ? toEnvironmentSessionCredential(
           "recovery",
           adminPassword,
-          credentialState.credential.session.version,
+          credentialState.kind === "ready"
+            ? credentialState.credential.session.version
+            : "recovery",
+        )
+      : null;
+  }
+
+  if (credentialState.kind === "missing") {
+    return isBootstrapModeEnabled(bootstrapMode) &&
+      isAdminPasswordConfigured(adminPassword)
+      ? toEnvironmentSessionCredential(
+          "bootstrap",
+          adminPassword,
+          "bootstrap",
         )
       : null;
   }
