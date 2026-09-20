@@ -55,13 +55,36 @@ export function getAdminLoginErrorMessage(error: string | undefined) {
     return "Admin password access is unavailable. Ask the site operator to check setup.";
   }
 
+  if (error === "setup_session_invalid") {
+    return "First-time password setup is no longer available. Sign in again.";
+  }
+
   return null;
 }
 
 export function getAdminLoginStatusMessage(changed: string | undefined) {
-  return changed === "1"
-    ? "Password changed. Sign in again with your new password."
-    : null;
+  if (changed === "1") {
+    return "Password changed. Sign in again with your new password.";
+  }
+
+  if (changed === "setup") {
+    return "Admin password set. Sign in with your new password.";
+  }
+
+  return null;
+}
+
+export function getAdminPasswordSetupErrorMessage(error: string | undefined) {
+  switch (error) {
+    case "confirmation_mismatch":
+      return "New password and confirmation must match. No password was set.";
+    case "invalid_new_password":
+      return "Enter a password that is not blank and has no spaces at the beginning or end.";
+    case "persistence_failed":
+      return "Admin password could not be set. Try again.";
+    default:
+      return null;
+  }
 }
 
 export function getAdminPasswordChangeErrorMessage(error: string | undefined) {

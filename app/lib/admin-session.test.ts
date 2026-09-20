@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   createAdminSessionCookieValue,
+  getAdminLoginSuccessPath,
   getAdminSessionCookieClearOptions,
   getAdminSessionCookieOptions,
   isAdminPasswordConfigured,
@@ -20,6 +21,15 @@ test("identifies configured admin password", () => {
   assert.equal(isAdminPasswordConfigured(""), false);
   assert.equal(isAdminPasswordConfigured("   "), false);
   assert.equal(isAdminPasswordConfigured("secret-pass"), true);
+});
+
+test("bootstrap login goes directly to first-time password setup", () => {
+  assert.equal(
+    getAdminLoginSuccessPath("bootstrap", "/admin"),
+    "/admin/password/setup",
+  );
+  assert.equal(getAdminLoginSuccessPath("owner", "/admin"), "/admin");
+  assert.equal(getAdminLoginSuccessPath("recovery", "/admin"), "/admin");
 });
 
 test("validates signed admin session cookie values", async () => {

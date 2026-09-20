@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import {
+  ADMIN_BOOTSTRAP_MODE_ENABLED_VALUE,
   ADMIN_RECOVERY_MODE_ENABLED_VALUE,
   authenticateAdminPassword,
   readAdminOwnerCredential,
@@ -158,7 +159,7 @@ test("replacement rotates salt and session version and invalidates old access", 
   );
 });
 
-test("missing credential state requires explicit recovery mode for bootstrap", async () => {
+test("missing credential state requires explicit bootstrap mode", async () => {
   const storePath = await createCredentialStorePath();
   const disabledAuthentication = await authenticateAdminPassword(
     RECOVERY_PASSWORD,
@@ -172,7 +173,8 @@ test("missing credential state requires explicit recovery mode for bootstrap", a
     RECOVERY_PASSWORD,
     {
       adminPassword: RECOVERY_PASSWORD,
-      recoveryMode: ADMIN_RECOVERY_MODE_ENABLED_VALUE,
+      bootstrapMode: ADMIN_BOOTSTRAP_MODE_ENABLED_VALUE,
+      recoveryMode: undefined,
       storePath,
     },
   );
@@ -187,7 +189,8 @@ test("missing credential state requires explicit recovery mode for bootstrap", a
     (
       await authenticateAdminPassword("synthetic-incorrect-password", {
         adminPassword: RECOVERY_PASSWORD,
-        recoveryMode: ADMIN_RECOVERY_MODE_ENABLED_VALUE,
+        bootstrapMode: ADMIN_BOOTSTRAP_MODE_ENABLED_VALUE,
+        recoveryMode: undefined,
         storePath,
       })
     ).kind,
@@ -197,7 +200,8 @@ test("missing credential state requires explicit recovery mode for bootstrap", a
     (
       await authenticateAdminPassword(RECOVERY_PASSWORD, {
         adminPassword: "   ",
-        recoveryMode: ADMIN_RECOVERY_MODE_ENABLED_VALUE,
+        bootstrapMode: ADMIN_BOOTSTRAP_MODE_ENABLED_VALUE,
+        recoveryMode: undefined,
         storePath,
       })
     ).kind,
@@ -211,6 +215,21 @@ test("missing credential state requires explicit recovery mode for bootstrap", a
     }),
     null,
   );
+
+  const recoveryAuthentication = await authenticateAdminPassword(
+    RECOVERY_PASSWORD,
+    {
+      adminPassword: RECOVERY_PASSWORD,
+      bootstrapMode: ADMIN_BOOTSTRAP_MODE_ENABLED_VALUE,
+      recoveryMode: ADMIN_RECOVERY_MODE_ENABLED_VALUE,
+      storePath,
+    },
+  );
+  assert.equal(recoveryAuthentication.kind, "authenticated");
+  if (recoveryAuthentication.kind !== "authenticated") {
+    assert.fail("Synthetic recovery credential did not authenticate");
+  }
+  assert.equal(recoveryAuthentication.session.kind, "recovery");
 });
 
 test("initialized state separates owner authentication from explicit recovery", async () => {
@@ -221,12 +240,14 @@ test("initialized state separates owner authentication from explicit recovery", 
     FIRST_OWNER_PASSWORD,
     {
       adminPassword: RECOVERY_PASSWORD,
+      bootstrapMode: ADMIN_BOOTSTRAP_MODE_ENABLED_VALUE,
       recoveryMode: undefined,
       storePath,
     },
   );
   const recoveryAsNormal = await authenticateAdminPassword(RECOVERY_PASSWORD, {
     adminPassword: RECOVERY_PASSWORD,
+    bootstrapMode: ADMIN_BOOTSTRAP_MODE_ENABLED_VALUE,
     recoveryMode: undefined,
     storePath,
   });
@@ -290,15 +311,22 @@ test("malformed and unreadable credential state always fail closed", async () =>
   await writeFile(storePath, malformedCredential, "utf8");
 
   assert.equal((await readAdminOwnerCredential(storePath)).kind, "unavailable");
-  for (const recoveryMode of [
-    undefined,
-    ADMIN_RECOVERY_MODE_ENABLED_VALUE,
+  for (const modes of [
+    { bootstrapMode: undefined, recoveryMode: undefined },
+    {
+      bootstrapMode: ADMIN_BOOTSTRAP_MODE_ENABLED_VALUE,
+      recoveryMode: undefined,
+    },
+    {
+      bootstrapMode: undefined,
+      recoveryMode: ADMIN_RECOVERY_MODE_ENABLED_VALUE,
+    },
   ]) {
     assert.equal(
       (
         await authenticateAdminPassword(RECOVERY_PASSWORD, {
           adminPassword: RECOVERY_PASSWORD,
-          recoveryMode,
+          ...modes,
           storePath,
         })
       ).kind,
@@ -314,15 +342,22 @@ test("malformed and unreadable credential state always fail closed", async () =>
   const unreadableStorePath = await createCredentialStorePath();
   await mkdir(unreadableStorePath);
 
-  for (const recoveryMode of [
-    undefined,
-    ADMIN_RECOVERY_MODE_ENABLED_VALUE,
+  for (const modes of [
+    { bootstrapMode: undefined, recoveryMode: undefined },
+    {
+      bootstrapMode: ADMIN_BOOTSTRAP_MODE_ENABLED_VALUE,
+      recoveryMode: undefined,
+    },
+    {
+      bootstrapMode: undefined,
+      recoveryMode: ADMIN_RECOVERY_MODE_ENABLED_VALUE,
+    },
   ]) {
     assert.equal(
       (
         await authenticateAdminPassword(RECOVERY_PASSWORD, {
           adminPassword: RECOVERY_PASSWORD,
-          recoveryMode,
+          ...modes,
           storePath: unreadableStorePath,
         })
       ).kind,

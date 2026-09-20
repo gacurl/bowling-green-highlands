@@ -5,6 +5,7 @@ import {
   getAdminLoginErrorMessage,
   getAdminLoginStatusMessage,
   getAdminPasswordChangeErrorMessage,
+  getAdminPasswordSetupErrorMessage,
   getRequestStatusErrorMessage,
   getReserveErrorMessage,
 } from "./operational-error-messages";
@@ -46,11 +47,35 @@ test("returns safe admin login failure messages", () => {
     "Admin password access is unavailable. Ask the site operator to check setup.",
   );
   assert.equal(
+    getAdminLoginErrorMessage("setup_session_invalid"),
+    "First-time password setup is no longer available. Sign in again.",
+  );
+  assert.equal(
     getAdminLoginStatusMessage("1"),
     "Password changed. Sign in again with your new password.",
   );
+  assert.equal(
+    getAdminLoginStatusMessage("setup"),
+    "Admin password set. Sign in with your new password.",
+  );
   assert.equal(getAdminLoginErrorMessage("other"), null);
   assert.equal(getAdminLoginStatusMessage(undefined), null);
+});
+
+test("returns safe first-time Admin password setup messages", () => {
+  assert.equal(
+    getAdminPasswordSetupErrorMessage("confirmation_mismatch"),
+    "New password and confirmation must match. No password was set.",
+  );
+  assert.equal(
+    getAdminPasswordSetupErrorMessage("invalid_new_password"),
+    "Enter a password that is not blank and has no spaces at the beginning or end.",
+  );
+  assert.equal(
+    getAdminPasswordSetupErrorMessage("persistence_failed"),
+    "Admin password could not be set. Try again.",
+  );
+  assert.equal(getAdminPasswordSetupErrorMessage("other"), null);
 });
 
 test("returns safe Admin password-change messages", () => {

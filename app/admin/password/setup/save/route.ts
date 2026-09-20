@@ -1,12 +1,12 @@
 import { NextResponse, type NextRequest } from "next/server";
 import {
-  changeAdminOwnerPassword,
-  getAdminPasswordChangeOutcome,
-} from "../../../lib/admin-auth";
+  getAdminPasswordSetupOutcome,
+  setupAdminOwnerPassword,
+} from "../../../../lib/admin-auth";
 import {
   ADMIN_SESSION_COOKIE_NAME,
   getAdminSessionCookieClearOptions,
-} from "../../../lib/admin-session";
+} from "../../../../lib/admin-session";
 
 function readFormString(formData: FormData, key: string) {
   const value = formData.get(key);
@@ -15,11 +15,10 @@ function readFormString(formData: FormData, key: string) {
 
 export async function POST(request: NextRequest) {
   const formData = await request.formData();
-  const result = await changeAdminOwnerPassword(
+  const result = await setupAdminOwnerPassword(
     {
       confirmation: readFormString(formData, "confirmation"),
       cookieValue: request.cookies.get(ADMIN_SESSION_COOKIE_NAME)?.value,
-      currentPassword: readFormString(formData, "currentPassword"),
       newPassword: readFormString(formData, "newPassword"),
     },
     {
@@ -28,7 +27,7 @@ export async function POST(request: NextRequest) {
       recoveryMode: process.env.BGH_ADMIN_RECOVERY_MODE,
     },
   );
-  const outcome = getAdminPasswordChangeOutcome(result);
+  const outcome = getAdminPasswordSetupOutcome(result);
   const response = NextResponse.redirect(
     new URL(outcome.redirectPath, request.url),
   );

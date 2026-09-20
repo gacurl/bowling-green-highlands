@@ -24,6 +24,7 @@ type AdminPasswordChangeInput = {
 
 type AdminPasswordChangeOptions = {
   adminPassword: string | undefined;
+  bootstrapMode?: string;
   recoveryMode: string | undefined;
   storePath?: string;
 };

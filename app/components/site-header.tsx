@@ -8,6 +8,7 @@ export async function SiteHeader() {
   const cookieStore = await cookies();
   const sessionCredential = await resolveAdminSessionCredential({
     adminPassword: process.env.ADMIN_PASSWORD,
+    bootstrapMode: process.env.BGH_ADMIN_BOOTSTRAP_MODE,
     recoveryMode: process.env.BGH_ADMIN_RECOVERY_MODE,
   });
   const showAdminNavigation = await shouldShowAdminNavigation(

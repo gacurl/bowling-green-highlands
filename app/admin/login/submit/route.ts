@@ -3,6 +3,7 @@ import { authenticateAdminPassword } from "../../../lib/admin-auth";
 import {
   ADMIN_SESSION_COOKIE_NAME,
   createAdminSessionCookieValue,
+  getAdminLoginSuccessPath,
   getAdminSessionCookieOptions,
 } from "../../../lib/admin-session";
 
@@ -29,6 +30,7 @@ export async function POST(request: Request) {
   const next = normalizeNextPath(readRequiredString(formData, "next"));
   const authentication = await authenticateAdminPassword(password, {
     adminPassword: process.env.ADMIN_PASSWORD,
+    bootstrapMode: process.env.BGH_ADMIN_BOOTSTRAP_MODE,
     recoveryMode: process.env.BGH_ADMIN_RECOVERY_MODE,
   });
 
@@ -46,7 +48,11 @@ export async function POST(request: Request) {
     return NextResponse.redirect(new URL(`/admin/login?${params.toString()}`, request.url));
   }
 
-  const response = NextResponse.redirect(new URL(next, request.url));
+  const redirectPath = getAdminLoginSuccessPath(
+    authentication.session.kind,
+    next,
+  );
+  const response = NextResponse.redirect(new URL(redirectPath, request.url));
   response.cookies.set(
     ADMIN_SESSION_COOKIE_NAME,
     await createAdminSessionCookieValue(authentication.session),

@@ -9,6 +9,13 @@ export type AdminSessionCredential = {
   signingKey: string;
 };
 
+export function getAdminLoginSuccessPath(
+  sessionKind: AdminSessionCredential["kind"],
+  nextPath: string,
+) {
+  return sessionKind === "bootstrap" ? "/admin/password/setup" : nextPath;
+}
+
 async function signAdminSessionPayload(credential: AdminSessionCredential) {
   const key = await crypto.subtle.importKey(
     "raw",

@@ -129,8 +129,11 @@ The app currently expects these variables in `.env.local`:
   [Admin password recovery guide](docs/admin-password-recovery.md). Authenticated
   owners change their normal password from the private Admin area.
 - `BGH_ADMIN_RECOVERY_MODE`
-  Keep `disabled` for normal operation. Set to `enabled` only during explicit
-  first-time bootstrap or an owner-authorized break-glass recovery window.
+  Keep `disabled` for normal operation. Set to `enabled` only during an
+  owner-authorized break-glass recovery window.
+- `BGH_ADMIN_BOOTSTRAP_MODE`
+  Set to `enabled` only for first-time owner password setup, then disable or
+  remove it after initialization.
 - `BGH_ADMIN_CREDENTIAL_STORE_PATH`
   Optional durable path override for the server-only owner credential state.
 - `STRIPE_SECRET_KEY`
@@ -146,18 +149,22 @@ for the current starter values.
 ## Admin Credential Storage
 
 Before the owner credential is initialized, `ADMIN_PASSWORD` provides the
-bootstrap login only while `BGH_ADMIN_RECOVERY_MODE` is explicitly set to
-`enabled`. With recovery mode disabled, missing credential state fails closed.
+bootstrap login only while `BGH_ADMIN_BOOTSTRAP_MODE` is explicitly set to
+`enabled`. Bootstrap login goes directly to the private first-time password
+setup page. With bootstrap mode disabled, missing credential state fails
+closed.
+
 After initialization, normal Admin login uses only the stored owner password
-hash; `ADMIN_PASSWORD` remains rejected unless recovery mode is explicitly
-enabled.
+hash. Bootstrap mode is ignored even if it remains temporarily enabled, and
+`ADMIN_PASSWORD` remains rejected unless recovery mode is explicitly enabled.
 
 The owner credential defaults to `data/admin-owner-credential.json` and can be
 relocated with `BGH_ADMIN_CREDENTIAL_STORE_PATH`. The file contains a salted
 scrypt hash and session-generation material, never the plaintext password. It
 must be kept in durable server-only storage. Missing state permits bootstrap
-only during explicit recovery mode; malformed or unreadable state always fails
-closed and is not overwritten.
+only during explicit bootstrap mode; malformed or unreadable state always
+fails closed and is not overwritten. Disable or remove bootstrap mode after
+successful initialization.
 
 Authenticated owners can use **Change password** from the private Admin area.
 The action verifies the current owner password, rotates the stored credential
