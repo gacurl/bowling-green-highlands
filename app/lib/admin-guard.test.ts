@@ -21,6 +21,7 @@ test("protects admin paths and excludes login endpoints", () => {
   assert.equal(isProtectedAdminPath("/reserve"), false);
   assert.equal(isProtectedAdminPath("/admin"), true);
   assert.equal(isProtectedAdminPath("/admin/content"), true);
+  assert.equal(isProtectedAdminPath("/admin/password"), true);
   assert.equal(isProtectedAdminPath("/admin/login"), false);
   assert.equal(isProtectedAdminPath("/admin/login/submit"), false);
 });
@@ -35,12 +36,12 @@ test("builds login redirect path with original admin path", () => {
 test("redirects when request has no valid admin session", async () => {
   assert.equal(
     await shouldRedirectToAdminLogin(
-      "/admin/content",
+      "/admin/password",
       "",
       undefined,
       ownerSession,
     ),
-    "/admin/login?next=%2Fadmin%2Fcontent",
+    "/admin/login?next=%2Fadmin%2Fpassword",
   );
 });
 
@@ -49,7 +50,7 @@ test("does not redirect when request has a valid admin session", async () => {
 
   assert.equal(
     await shouldRedirectToAdminLogin(
-      "/admin/content",
+      "/admin/password",
       "",
       cookieValue,
       ownerSession,

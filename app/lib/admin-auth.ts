@@ -12,3 +12,7 @@ export type {
   AdminOwnerCredentialReadResult,
   ReplaceAdminOwnerCredentialResult,
 } from "./admin-credential-store";
+export {
+  changeAdminOwnerPassword,
+  getAdminPasswordChangeOutcome,
+} from "./admin-password-change";

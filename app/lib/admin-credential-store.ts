@@ -61,6 +61,7 @@ export type AdminAuthenticationResult =
 
 export type ReplaceAdminOwnerCredentialResult =
   | { kind: "invalid_password" }
+  | { kind: "persistence_failed" }
   | { kind: "replaced"; sessionVersion: string }
   | { kind: "unavailable" };
 
@@ -289,6 +290,7 @@ export async function verifyAdminOwnerPassword(
 export async function replaceAdminOwnerCredential(
   password: string,
   storePath = getAdminOwnerCredentialStorePath(),
+  expectedSessionVersion?: string,
 ): Promise<ReplaceAdminOwnerCredentialResult> {
   if (!isAdminPasswordConfigured(password)) {
     return { kind: "invalid_password" };
@@ -297,6 +299,14 @@ export async function replaceAdminOwnerCredential(
   const existingCredential = await readAdminOwnerCredential(storePath);
 
   if (existingCredential.kind === "unavailable") {
+    return { kind: "unavailable" };
+  }
+
+  if (
+    expectedSessionVersion !== undefined &&
+    (existingCredential.kind !== "ready" ||
+      existingCredential.credential.session.version !== expectedSessionVersion)
+  ) {
     return { kind: "unavailable" };
   }
 
@@ -309,7 +319,7 @@ export async function replaceAdminOwnerCredential(
       sessionVersion: credential.session.version,
     };
   } catch {
-    return { kind: "unavailable" };
+    return { kind: "persistence_failed" };
   }
 }
 

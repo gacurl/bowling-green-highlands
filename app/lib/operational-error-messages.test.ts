@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import {
   getAdminActionErrorMessage,
   getAdminLoginErrorMessage,
+  getAdminLoginStatusMessage,
+  getAdminPasswordChangeErrorMessage,
   getRequestStatusErrorMessage,
   getReserveErrorMessage,
 } from "./operational-error-messages";
@@ -35,7 +37,44 @@ test("returns safe admin login failure messages", () => {
     getAdminLoginErrorMessage("not_configured"),
     "Admin login is not ready. Ask the site operator to check setup.",
   );
+  assert.equal(
+    getAdminLoginErrorMessage("session_invalid"),
+    "Your Admin session is no longer valid. Sign in again.",
+  );
+  assert.equal(
+    getAdminLoginErrorMessage("credential_unavailable"),
+    "Admin password access is unavailable. Ask the site operator to check setup.",
+  );
+  assert.equal(
+    getAdminLoginStatusMessage("1"),
+    "Password changed. Sign in again with your new password.",
+  );
   assert.equal(getAdminLoginErrorMessage("other"), null);
+  assert.equal(getAdminLoginStatusMessage(undefined), null);
+});
+
+test("returns safe Admin password-change messages", () => {
+  assert.equal(
+    getAdminPasswordChangeErrorMessage("incorrect_current_password"),
+    "Current password did not match. No change was made.",
+  );
+  assert.equal(
+    getAdminPasswordChangeErrorMessage("confirmation_mismatch"),
+    "New password and confirmation must match. No change was made.",
+  );
+  assert.equal(
+    getAdminPasswordChangeErrorMessage("invalid_new_password"),
+    "Enter a new password that is not blank and has no spaces at the beginning or end.",
+  );
+  assert.equal(
+    getAdminPasswordChangeErrorMessage("persistence_failed"),
+    "Password could not be changed. Your current password still works. Try again.",
+  );
+  assert.equal(
+    getAdminPasswordChangeErrorMessage("owner_mode_required"),
+    "Password changes are available only after signing in with the owner password during normal operation.",
+  );
+  assert.equal(getAdminPasswordChangeErrorMessage("other"), null);
 });
 
 test("returns recoverable admin load and action messages", () => {

@@ -70,6 +70,12 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
             Edit homepage content
           </Link>
           <Link
+            href="/admin/password"
+            className="inline-flex min-h-11 items-center justify-center rounded-full border border-[#CFC3AE] bg-[#FDF8EF] px-6 py-3 text-sm font-medium text-[#2B2922] transition-colors hover:bg-[#F6F0E6]"
+          >
+            Change password
+          </Link>
+          <Link
             href="/"
             className="inline-flex min-h-11 items-center justify-center rounded-full bg-[#2F4A35] px-6 py-3 text-sm font-medium text-[#FFF8EA] transition-colors hover:bg-[#B86748]"
           >
