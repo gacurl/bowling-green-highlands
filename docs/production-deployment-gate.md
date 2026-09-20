@@ -39,6 +39,8 @@ Operational rules:
 The local placeholder format and variable names are documented in
 [`.env.example`](../.env.example). The concise setup summary is in the
 [README](../README.md#stripe-environment-isolation).
+Planned and emergency credential changes must follow the
+[Stripe credential rotation runbook](stripe-credential-rotation.md).
 
 ## Required Pull Request Checks
 
