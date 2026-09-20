@@ -27,6 +27,8 @@ What it does today:
 - the confirmation page makes clear that no booking has been confirmed
 - operators can manage day-level availability from `/admin`
 - public request options are filtered by operator availability
+- accepted requests can use the Stripe test payment integration
+- signed Stripe webhooks establish trusted paid status without confirming a booking
 
 ## MVP Scope
 
@@ -35,10 +37,11 @@ Current MVP scope:
 - server-side email forwarding for submitted requests
 - basic server-side validation for required request fields
 - operator day-level availability controls
+- test-mode Stripe Checkout for accepted requests
 
 What this does not do yet:
 - no confirmed booking flow
-- no payments
+- no live Stripe payments before explicit go-live approval
 - no database-backed persistence layer
 - no submission list or admin dashboard
 - no public account system
@@ -72,7 +75,7 @@ Near-term direction (Milestone 3):
 - keep the operator workflow simple and low-cognitive-load
 
 Out of scope for Milestone 3:
-- payments
+- subscription billing, automated collections, or payment recovery workflows
 - auto-booking
 - recurring scheduling
 - drag/drop calendars
@@ -121,9 +124,28 @@ The app currently expects these variables in `.env.local`:
 - `ADMIN_PASSWORD`
   Password required for admin session access to `/admin` routes.
   Example: `change-this-admin-password`
+- `STRIPE_SECRET_KEY`
+  Server-only Stripe test secret key for local development.
+- `STRIPE_CHECKOUT_PRICE_ID`
+  Stripe test Price ID that matches the configured test secret key.
+- `STRIPE_WEBHOOK_SECRET`
+  Signing secret for the test webhook endpoint targeting this environment.
 
-See [.env.example](/Users/gacurl/IdeaProjects/bowling-green-highlands/.env.example)
+See [.env.example](.env.example)
 for the current starter values.
+
+## Stripe Environment Isolation
+
+Stripe payment integration exists in test mode. Local Development and Vercel
+Preview must use matching Stripe test resources. Vercel Production remains
+payment-disabled or explicitly test-only until go-live is approved; only then
+may it use a matching set of live Stripe resources.
+
+Never mix test and live keys, Prices, webhook endpoints, or webhook secrets.
+`NEXT_PUBLIC_APP_URL` must also match the environment receiving Stripe returns.
+See the canonical
+[Stripe environment matrix](docs/production-deployment-gate.md#stripe-environment-isolation)
+before configuring any deployment.
 
 ## Routes
 
