@@ -124,6 +124,9 @@ The app currently expects these variables in `.env.local`:
 - `ADMIN_PASSWORD`
   Password required for admin session access to `/admin` routes.
   Example: `change-this-admin-password`
+  For owner-authorized break-glass recovery only, see the
+  [Admin password recovery guide](docs/admin-password-recovery.md). Normal owner
+  password changes are tracked separately in Issue #236.
 - `STRIPE_SECRET_KEY`
   Server-only Stripe test secret key for local development.
 - `STRIPE_CHECKOUT_PRICE_ID`
