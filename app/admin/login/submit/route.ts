@@ -37,6 +37,7 @@ export async function POST(request: Request) {
   if (authentication.kind === "unavailable") {
     return NextResponse.redirect(
       new URL("/admin/login?error=not_configured", request.url),
+      303,
     );
   }
 
@@ -45,14 +46,20 @@ export async function POST(request: Request) {
       error: "invalid_password",
       next,
     });
-    return NextResponse.redirect(new URL(`/admin/login?${params.toString()}`, request.url));
+    return NextResponse.redirect(
+      new URL(`/admin/login?${params.toString()}`, request.url),
+      303,
+    );
   }
 
   const redirectPath = getAdminLoginSuccessPath(
     authentication.session.kind,
     next,
   );
-  const response = NextResponse.redirect(new URL(redirectPath, request.url));
+  const response = NextResponse.redirect(
+    new URL(redirectPath, request.url),
+    303,
+  );
   response.cookies.set(
     ADMIN_SESSION_COOKIE_NAME,
     await createAdminSessionCookieValue(authentication.session),
