@@ -9,6 +9,7 @@ type AdminLoginPageProps = {
     changed?: string;
     error?: string;
     next?: string;
+    reset?: string;
     setup?: string;
   }>;
 };
@@ -17,7 +18,11 @@ export default async function AdminLoginPage({ searchParams }: AdminLoginPagePro
   const resolvedSearchParams = searchParams ? await searchParams : {};
   const errorMessage = getAdminLoginErrorMessage(resolvedSearchParams.error);
   const statusMessage = getAdminLoginStatusMessage(
-    resolvedSearchParams.setup === "1" ? "setup" : resolvedSearchParams.changed,
+    resolvedSearchParams.reset === "1"
+      ? "recovery"
+      : resolvedSearchParams.setup === "1"
+        ? "setup"
+        : resolvedSearchParams.changed,
   );
   const next = resolvedSearchParams.next ?? "/admin";
 

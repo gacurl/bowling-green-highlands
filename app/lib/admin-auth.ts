@@ -19,6 +19,11 @@ export {
   getAdminPasswordChangeOutcome,
 } from "./admin-password-change";
 export {
+  authorizeAdminPasswordRecovery,
+  getAdminPasswordRecoveryOutcome,
+  resetAdminOwnerPasswordFromRecovery,
+} from "./admin-password-recovery";
+export {
   authorizeAdminPasswordSetup,
   getAdminPasswordSetupOutcome,
   setupAdminOwnerPassword,

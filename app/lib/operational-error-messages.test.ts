@@ -5,6 +5,7 @@ import {
   getAdminLoginErrorMessage,
   getAdminLoginStatusMessage,
   getAdminPasswordChangeErrorMessage,
+  getAdminPasswordRecoveryErrorMessage,
   getAdminPasswordSetupErrorMessage,
   getRequestStatusErrorMessage,
   getReserveErrorMessage,
@@ -51,6 +52,10 @@ test("returns safe admin login failure messages", () => {
     "First-time password setup is no longer available. Sign in again.",
   );
   assert.equal(
+    getAdminLoginErrorMessage("recovery_session_invalid"),
+    "Recovery password reset is no longer available. Sign in again.",
+  );
+  assert.equal(
     getAdminLoginStatusMessage("1"),
     "Password changed. Sign in again with your new password.",
   );
@@ -58,8 +63,28 @@ test("returns safe admin login failure messages", () => {
     getAdminLoginStatusMessage("setup"),
     "Admin password set. Sign in with your new password.",
   );
+  assert.equal(
+    getAdminLoginStatusMessage("recovery"),
+    "Owner password reset. Disable recovery mode and restart the application before normal sign-in.",
+  );
   assert.equal(getAdminLoginErrorMessage("other"), null);
   assert.equal(getAdminLoginStatusMessage(undefined), null);
+});
+
+test("returns safe recovery password-reset messages", () => {
+  assert.equal(
+    getAdminPasswordRecoveryErrorMessage("confirmation_mismatch"),
+    "New password and confirmation must match. No change was made.",
+  );
+  assert.equal(
+    getAdminPasswordRecoveryErrorMessage("invalid_new_password"),
+    "Enter a new password that is not blank and has no spaces at the beginning or end.",
+  );
+  assert.equal(
+    getAdminPasswordRecoveryErrorMessage("persistence_failed"),
+    "Owner password could not be reset. No credential change was saved. Try again.",
+  );
+  assert.equal(getAdminPasswordRecoveryErrorMessage("other"), null);
 });
 
 test("returns safe first-time Admin password setup messages", () => {
