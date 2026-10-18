@@ -13,7 +13,13 @@ export function getAdminLoginSuccessPath(
   sessionKind: AdminSessionCredential["kind"],
   nextPath: string,
 ) {
-  return sessionKind === "bootstrap" ? "/admin/password/setup" : nextPath;
+  if (sessionKind === "bootstrap") {
+    return "/admin/password/setup";
+  }
+
+  return sessionKind === "recovery"
+    ? "/admin/password/recovery"
+    : nextPath;
 }
 
 async function signAdminSessionPayload(credential: AdminSessionCredential) {

@@ -304,7 +304,7 @@ export async function verifyAdminOwnerPassword(
 export async function replaceAdminOwnerCredential(
   password: string,
   storePath = getAdminOwnerCredentialStorePath(),
-  expectedSessionVersion?: string,
+  expectedSessionVersion?: string | null,
 ): Promise<ReplaceAdminOwnerCredentialResult> {
   if (!isAdminPasswordConfigured(password)) {
     return { kind: "invalid_password" };
@@ -316,12 +316,17 @@ export async function replaceAdminOwnerCredential(
     return { kind: "unavailable" };
   }
 
-  if (
-    expectedSessionVersion !== undefined &&
-    (existingCredential.kind !== "ready" ||
-      existingCredential.credential.session.version !== expectedSessionVersion)
-  ) {
-    return { kind: "unavailable" };
+  if (expectedSessionVersion !== undefined) {
+    const matchesExpectedState =
+      expectedSessionVersion === null
+        ? existingCredential.kind === "missing"
+        : existingCredential.kind === "ready" &&
+          existingCredential.credential.session.version ===
+            expectedSessionVersion;
+
+    if (!matchesExpectedState) {
+      return { kind: "unavailable" };
+    }
   }
 
   try {

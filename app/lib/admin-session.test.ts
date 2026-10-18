@@ -23,13 +23,16 @@ test("identifies configured admin password", () => {
   assert.equal(isAdminPasswordConfigured("secret-pass"), true);
 });
 
-test("bootstrap login goes directly to first-time password setup", () => {
+test("special-purpose login goes directly to its password flow", () => {
   assert.equal(
     getAdminLoginSuccessPath("bootstrap", "/admin"),
     "/admin/password/setup",
   );
   assert.equal(getAdminLoginSuccessPath("owner", "/admin"), "/admin");
-  assert.equal(getAdminLoginSuccessPath("recovery", "/admin"), "/admin");
+  assert.equal(
+    getAdminLoginSuccessPath("recovery", "/admin"),
+    "/admin/password/recovery",
+  );
 });
 
 test("validates signed admin session cookie values", async () => {

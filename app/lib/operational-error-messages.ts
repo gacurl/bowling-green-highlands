@@ -59,6 +59,10 @@ export function getAdminLoginErrorMessage(error: string | undefined) {
     return "First-time password setup is no longer available. Sign in again.";
   }
 
+  if (error === "recovery_session_invalid") {
+    return "Recovery password reset is no longer available. Sign in again.";
+  }
+
   return null;
 }
 
@@ -71,7 +75,26 @@ export function getAdminLoginStatusMessage(changed: string | undefined) {
     return "Admin password set. Sign in with your new password.";
   }
 
+  if (changed === "recovery") {
+    return "Owner password reset. Disable recovery mode and restart the application before normal sign-in.";
+  }
+
   return null;
+}
+
+export function getAdminPasswordRecoveryErrorMessage(
+  error: string | undefined,
+) {
+  switch (error) {
+    case "confirmation_mismatch":
+      return "New password and confirmation must match. No change was made.";
+    case "invalid_new_password":
+      return "Enter a new password that is not blank and has no spaces at the beginning or end.";
+    case "persistence_failed":
+      return "Owner password could not be reset. No credential change was saved. Try again.";
+    default:
+      return null;
+  }
 }
 
 export function getAdminPasswordSetupErrorMessage(error: string | undefined) {
