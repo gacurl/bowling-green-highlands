@@ -114,12 +114,6 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
             <span>{requestsLoadError.body}</span>
           </p>
         ) : null}
-        {initialAvailability ? (
-          <MonthCalendar
-            initialAvailability={initialAvailability}
-            todayIso={todayIso}
-          />
-        ) : null}
       </div>
       <details className="mt-6 rounded-3xl border border-[#D8CDBA] bg-[#FDF8EF] p-4 shadow-sm sm:p-6">
         <summary className="cursor-pointer list-none">
@@ -225,6 +219,14 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
           </div>
         )}
       </details>
+      {initialAvailability ? (
+        <div className="mt-6">
+          <MonthCalendar
+            initialAvailability={initialAvailability}
+            todayIso={todayIso}
+          />
+        </div>
+      ) : null}
     </PageShell>
   );
 }
