@@ -6,14 +6,7 @@ const MIGRATION_PATTERN = /^\d{4}_[a-z0-9_]+\.sql$/;
 const ROLE_PATTERN = /^[a-z_][a-z0-9_]*$/;
 const MIGRATION_LOCK_ID = 261;
 const MIGRATION_TARGETS = new Set(["preview", "production"]);
-const MIGRATION_TARGET_SETTING = "bgh.migration_target";
-const NEON_PROJECT_ID_SETTING = "bgh.neon_project_id";
-const NEON_BRANCH_ID_SETTING = "bgh.neon_branch_id";
-const DATABASE_IDENTITY_SETTINGS = [
-  MIGRATION_TARGET_SETTING,
-  NEON_PROJECT_ID_SETTING,
-  NEON_BRANCH_ID_SETTING,
-];
+const MIGRATION_IDENTITY_TABLE = "public.bgh_migration_identity";
 const NEON_PROJECT_ID_PATTERN = /^[a-z0-9-]{1,60}$/;
 const NEON_BRANCH_ID_PATTERN = /^br-[a-z0-9-]{1,57}$/;
 const PREVIEW_RUNTIME_ROLE = "bgh_preview_app";
@@ -26,6 +19,7 @@ const TABLE_PRIVILEGES = [
   "REFERENCES",
   "TRIGGER",
 ];
+const COLUMN_PRIVILEGES = ["SELECT", "INSERT", "UPDATE", "REFERENCES"];
 const REQUIRED_TABLE_PRIVILEGES = [
   {
     privileges: ["SELECT", "INSERT", "UPDATE"],
@@ -87,51 +81,65 @@ async function verifyRuntimePrivileges(client, runtimeRole) {
   }
 }
 
-async function readDatabaseIdentityMarkers(client) {
-  const result = await client.query(
+async function readDatabaseIdentity(client) {
+  const relationResult = await client.query(
     `
     SELECT
-      split_part(configured.setting, '=', 1) AS name,
-      substring(configured.setting FROM strpos(configured.setting, '=') + 1) AS value
-    FROM pg_db_role_setting AS role_setting
-    JOIN pg_database AS target_database
-      ON target_database.oid = role_setting.setdatabase
-    CROSS JOIN LATERAL unnest(role_setting.setconfig) AS configured(setting)
-    WHERE target_database.datname = current_database()
-      AND role_setting.setrole = 0
-      AND split_part(configured.setting, '=', 1) = ANY($1::text[])
+      identity_table.relkind,
+      pg_get_userbyid(identity_table.relowner) AS table_owner,
+      current_user::text AS migration_role,
+      session_user::text AS session_role
+    FROM pg_class AS identity_table
+    JOIN pg_namespace AS identity_schema
+      ON identity_schema.oid = identity_table.relnamespace
+    WHERE identity_schema.nspname = 'public'
+      AND identity_table.relname = 'bgh_migration_identity'
     `,
-    [DATABASE_IDENTITY_SETTINGS],
   );
-  const markers = new Map();
 
-  for (const setting of DATABASE_IDENTITY_SETTINGS) {
-    const values = result.rows
-      .filter((row) => row.name === setting)
-      .map((row) => row.value);
-
-    if (values.length === 0) {
-      throw new Error(`Database identity marker is missing: ${setting}`);
-    }
-
-    if (values.length !== 1) {
-      throw new Error(`Database identity marker is ambiguous: ${setting}`);
-    }
-
-    markers.set(setting, values[0]);
+  if (relationResult.rows.length === 0) {
+    throw new Error("Database migration identity table is missing");
   }
 
-  return markers;
+  const relation = relationResult.rows[0];
+
+  if (relation.relkind !== "r") {
+    throw new Error("Database migration identity must be an ordinary table");
+  }
+
+  if (
+    relation.migration_role !== relation.session_role ||
+    relation.table_owner !== relation.migration_role
+  ) {
+    throw new Error(
+      "Database migration identity must be owned by the authenticated migration role",
+    );
+  }
+
+  const identityResult = await client.query(`
+    SELECT migration_target, neon_project_id, neon_branch_id
+    FROM ${MIGRATION_IDENTITY_TABLE}
+  `);
+
+  if (identityResult.rows.length === 0) {
+    throw new Error("Database migration identity row is missing");
+  }
+
+  if (identityResult.rows.length !== 1) {
+    throw new Error("Database migration identity row is duplicated");
+  }
+
+  return identityResult.rows[0];
 }
 
 async function verifyDatabaseIdentity(
   client,
   { confirmProduction, expectedNeonBranchId, expectedNeonProjectId, target },
 ) {
-  const markers = await readDatabaseIdentityMarkers(client);
-  const actualTarget = markers.get(MIGRATION_TARGET_SETTING);
-  const actualNeonProjectId = markers.get(NEON_PROJECT_ID_SETTING);
-  const actualNeonBranchId = markers.get(NEON_BRANCH_ID_SETTING);
+  const identity = await readDatabaseIdentity(client);
+  const actualTarget = identity.migration_target;
+  const actualNeonProjectId = identity.neon_project_id;
+  const actualNeonBranchId = identity.neon_branch_id;
 
   if (!MIGRATION_TARGETS.has(actualTarget)) {
     throw new Error("Database migration target marker is malformed");
@@ -159,6 +167,39 @@ async function verifyDatabaseIdentity(
 
   if (actualNeonBranchId !== expectedNeonBranchId) {
     throw new Error("Expected Neon branch ID does not match the database marker");
+  }
+}
+
+async function verifyMigrationIdentityPrivileges(client, runtimeRole) {
+  const supportedPrivileges = await client.query(`
+    SELECT DISTINCT privilege_type
+    FROM aclexplode(acldefault('r', current_user::regrole::oid))
+  `);
+
+  for (const { privilege_type: privilege } of supportedPrivileges.rows) {
+    const result = await client.query(
+      "SELECT has_table_privilege($1, $2, $3) AS allowed",
+      [runtimeRole, MIGRATION_IDENTITY_TABLE, privilege],
+    );
+
+    if (result.rows[0]?.allowed !== false) {
+      throw new Error(
+        `Runtime database role must not have ${privilege} on migration identity`,
+      );
+    }
+  }
+
+  for (const privilege of COLUMN_PRIVILEGES) {
+    const result = await client.query(
+      "SELECT has_any_column_privilege($1, $2, $3) AS allowed",
+      [runtimeRole, MIGRATION_IDENTITY_TABLE, privilege],
+    );
+
+    if (result.rows[0]?.allowed !== false) {
+      throw new Error(
+        `Runtime database role must not have column ${privilege} on migration identity`,
+      );
+    }
   }
 }
 
@@ -318,6 +359,7 @@ export async function applyMigrations({
       target,
     });
     await verifyRoleIsolation(client, runtimeRole);
+    await verifyMigrationIdentityPrivileges(client, runtimeRole);
     await client.query("SET LOCAL search_path TO public");
     await client.query("SELECT pg_advisory_xact_lock($1)", [MIGRATION_LOCK_ID]);
     await client.query(`
