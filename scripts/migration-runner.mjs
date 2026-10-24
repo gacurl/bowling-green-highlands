@@ -5,6 +5,35 @@ import path from "node:path";
 const MIGRATION_PATTERN = /^\d{4}_[a-z0-9_]+\.sql$/;
 const ROLE_PATTERN = /^[a-z_][a-z0-9_]*$/;
 const MIGRATION_LOCK_ID = 261;
+const TABLE_PRIVILEGES = [
+  "SELECT",
+  "INSERT",
+  "UPDATE",
+  "DELETE",
+  "TRUNCATE",
+  "REFERENCES",
+  "TRIGGER",
+];
+const REQUIRED_TABLE_PRIVILEGES = [
+  {
+    privileges: ["SELECT", "INSERT", "UPDATE"],
+    table: "admin_owner_credentials",
+  },
+  {
+    privileges: ["SELECT", "INSERT", "UPDATE", "DELETE"],
+    table: "operator_availability",
+  },
+  {
+    privileges: ["SELECT", "INSERT", "UPDATE", "DELETE"],
+    table: "reservation_requests",
+  },
+  {
+    privileges: ["SELECT", "INSERT", "UPDATE"],
+    table: "homepage_content",
+  },
+];
+const SEQUENCE_PRIVILEGES = ["USAGE", "SELECT", "UPDATE"];
+const RESERVATION_SEQUENCE = "reservation_requests_sequence_id_seq";
 
 function quoteIdentifier(identifier) {
   if (!ROLE_PATTERN.test(identifier)) {
@@ -12,6 +41,38 @@ function quoteIdentifier(identifier) {
   }
 
   return `"${identifier}"`;
+}
+
+async function verifyRuntimePrivileges(client, runtimeRole) {
+  for (const { privileges, table } of REQUIRED_TABLE_PRIVILEGES) {
+    for (const privilege of TABLE_PRIVILEGES) {
+      const result = await client.query(
+        "SELECT has_table_privilege($1, $2, $3) AS allowed",
+        [runtimeRole, table, privilege],
+      );
+      const expected = privileges.includes(privilege);
+
+      if (result.rows[0]?.allowed !== expected) {
+        throw new Error(
+          `Runtime database role privilege mismatch: ${privilege} on ${table}`,
+        );
+      }
+    }
+  }
+
+  for (const privilege of SEQUENCE_PRIVILEGES) {
+    const result = await client.query(
+      "SELECT has_sequence_privilege($1, $2, $3) AS allowed",
+      [runtimeRole, RESERVATION_SEQUENCE, privilege],
+    );
+    const expected = privilege === "USAGE";
+
+    if (result.rows[0]?.allowed !== expected) {
+      throw new Error(
+        `Runtime database role privilege mismatch: ${privilege} on ${RESERVATION_SEQUENCE}`,
+      );
+    }
+  }
 }
 
 export async function loadMigrations(
@@ -93,20 +154,37 @@ export async function applyMigrations({
       throw new Error("Runtime database role must not have schema CREATE privilege");
     }
 
-    await client.query(`GRANT USAGE ON SCHEMA public TO ${quotedRuntimeRole}`);
     await client.query(`
-      GRANT SELECT, INSERT, UPDATE, DELETE
+      REVOKE ALL PRIVILEGES
       ON admin_owner_credentials,
          operator_availability,
          reservation_requests,
          homepage_content
+      FROM ${quotedRuntimeRole}
+    `);
+    await client.query(`
+      REVOKE ALL PRIVILEGES
+      ON SEQUENCE ${RESERVATION_SEQUENCE}
+      FROM ${quotedRuntimeRole}
+    `);
+    await client.query(`GRANT USAGE ON SCHEMA public TO ${quotedRuntimeRole}`);
+    await client.query(`
+      GRANT SELECT, INSERT, UPDATE
+      ON admin_owner_credentials,
+         homepage_content
       TO ${quotedRuntimeRole}
     `);
     await client.query(`
-      GRANT USAGE
-      ON SEQUENCE reservation_requests_sequence_id_seq
+      GRANT SELECT, INSERT, UPDATE, DELETE
+      ON operator_availability,
+         reservation_requests
       TO ${quotedRuntimeRole}
     `);
+    await client.query(`
+      GRANT USAGE ON SEQUENCE ${RESERVATION_SEQUENCE}
+      TO ${quotedRuntimeRole}
+    `);
+    await verifyRuntimePrivileges(client, runtimeRole);
     await client.query("COMMIT");
 
     return migrations.map(({ filename }) => filename);

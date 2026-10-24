@@ -8,6 +8,23 @@ import pg from "pg";
 import { applyMigrations, loadMigrations } from "./migration-runner.mjs";
 
 const { Pool } = pg;
+const TABLE_PRIVILEGES = [
+  "SELECT",
+  "INSERT",
+  "UPDATE",
+  "DELETE",
+  "TRUNCATE",
+  "REFERENCES",
+  "TRIGGER",
+];
+const EXPECTED_TABLE_PRIVILEGES = {
+  admin_owner_credentials: ["SELECT", "INSERT", "UPDATE"],
+  operator_availability: ["SELECT", "INSERT", "UPDATE", "DELETE"],
+  reservation_requests: ["SELECT", "INSERT", "UPDATE", "DELETE"],
+  homepage_content: ["SELECT", "INSERT", "UPDATE"],
+};
+const SEQUENCE_PRIVILEGES = ["USAGE", "SELECT", "UPDATE"];
+const RESERVATION_SEQUENCE = "reservation_requests_sequence_id_seq";
 
 function getTestDatabaseUrl() {
   const databaseUrl = process.env.TEST_DATABASE_URL?.trim();
@@ -22,10 +39,13 @@ function getTestDatabaseUrl() {
 async function createMigrationEnvironment() {
   const suffix = randomUUID().replaceAll("-", "");
   const databaseName = `bgh_migration_${suffix}`;
+  const inheritedRole = `bgh_inherited_${suffix}`;
   const runtimeRole = `bgh_runtime_${suffix}`;
   const adminPool = new Pool({ connectionString: getTestDatabaseUrl() });
 
+  await adminPool.query(`CREATE ROLE "${inheritedRole}" NOLOGIN`);
   await adminPool.query(`CREATE ROLE "${runtimeRole}" NOLOGIN`);
+  await adminPool.query(`GRANT "${inheritedRole}" TO "${runtimeRole}"`);
   await adminPool.query(`CREATE DATABASE "${databaseName}"`);
 
   const databaseUrl = new URL(getTestDatabaseUrl());
@@ -37,6 +57,7 @@ async function createMigrationEnvironment() {
     adminPool,
     connectionString: databaseUrl.toString(),
     databaseName,
+    inheritedRole,
     pool,
     runtimeRole,
     async cleanup() {
@@ -47,9 +68,54 @@ async function createMigrationEnvironment() {
       );
       await adminPool.query(`DROP DATABASE "${databaseName}"`);
       await adminPool.query(`DROP ROLE "${runtimeRole}"`);
+      await adminPool.query(`DROP ROLE "${inheritedRole}"`);
       await adminPool.end();
     },
   };
+}
+
+async function assertEffectiveRuntimePrivileges(pool, runtimeRole) {
+  const schemaPrivileges = await pool.query(
+    `
+      SELECT
+        has_schema_privilege($1, 'public', 'USAGE') AS can_use,
+        has_schema_privilege($1, 'public', 'CREATE') AS can_create
+    `,
+    [runtimeRole],
+  );
+
+  assert.equal(schemaPrivileges.rows[0].can_use, true);
+  assert.equal(schemaPrivileges.rows[0].can_create, false);
+
+  for (const [table, expectedPrivileges] of Object.entries(
+    EXPECTED_TABLE_PRIVILEGES,
+  )) {
+    for (const privilege of TABLE_PRIVILEGES) {
+      const result = await pool.query(
+        "SELECT has_table_privilege($1, $2, $3) AS allowed",
+        [runtimeRole, table, privilege],
+      );
+
+      assert.equal(
+        result.rows[0].allowed,
+        expectedPrivileges.includes(privilege),
+        `${privilege} on ${table}`,
+      );
+    }
+  }
+
+  for (const privilege of SEQUENCE_PRIVILEGES) {
+    const result = await pool.query(
+      "SELECT has_sequence_privilege($1, $2, $3) AS allowed",
+      [runtimeRole, RESERVATION_SEQUENCE, privilege],
+    );
+
+    assert.equal(
+      result.rows[0].allowed,
+      privilege === "USAGE",
+      `${privilege} on ${RESERVATION_SEQUENCE}`,
+    );
+  }
 }
 
 test("migrations are repeatable, serialized, and grant only runtime DML", async (t) => {
@@ -77,6 +143,24 @@ test("migrations are repeatable, serialized, and grant only runtime DML", async 
 
   assert.deepEqual(results[0], ["0001_durable_persistence.sql"]);
   assert.deepEqual(results[1], ["0001_durable_persistence.sql"]);
+  await environment.pool.query(`
+    GRANT ALL PRIVILEGES
+    ON admin_owner_credentials,
+       operator_availability,
+       reservation_requests,
+       homepage_content
+    TO "${environment.runtimeRole}"
+  `);
+  await environment.pool.query(`
+    GRANT ALL PRIVILEGES
+    ON SEQUENCE ${RESERVATION_SEQUENCE}
+    TO "${environment.runtimeRole}"
+  `);
+  await applyMigrations({
+    pool: environment.pool,
+    runtimeRole: environment.runtimeRole,
+  });
+
   assert.equal(
     (
       await environment.pool.query(
@@ -85,32 +169,47 @@ test("migrations are repeatable, serialized, and grant only runtime DML", async 
     ).rows[0].count,
     1,
   );
-  assert.equal(
-    (
-      await environment.pool.query(
-        "SELECT has_schema_privilege($1, 'public', 'CREATE') AS can_create",
-        [environment.runtimeRole],
-      )
-    ).rows[0].can_create,
-    false,
+  await assertEffectiveRuntimePrivileges(
+    environment.pool,
+    environment.runtimeRole,
   );
-  assert.equal(
-    (
-      await environment.pool.query(
-        "SELECT has_table_privilege($1, 'reservation_requests', 'INSERT') AS can_insert",
-        [environment.runtimeRole],
-      )
-    ).rows[0].can_insert,
-    true,
+});
+
+test("migrations fail closed on inherited or PUBLIC excess privileges", async (t) => {
+  const environment = await createMigrationEnvironment();
+  t.after(environment.cleanup);
+  await applyMigrations({
+    pool: environment.pool,
+    runtimeRole: environment.runtimeRole,
+  });
+
+  await environment.pool.query(
+    "GRANT DELETE ON admin_owner_credentials TO PUBLIC",
   );
-  assert.equal(
-    (
-      await environment.pool.query(
-        "SELECT has_sequence_privilege($1, 'reservation_requests_sequence_id_seq', 'USAGE') AS can_use",
-        [environment.runtimeRole],
-      )
-    ).rows[0].can_use,
-    true,
+  await assert.rejects(
+    applyMigrations({
+      pool: environment.pool,
+      runtimeRole: environment.runtimeRole,
+    }),
+    /DELETE on admin_owner_credentials/,
+  );
+  await environment.pool.query(
+    "REVOKE DELETE ON admin_owner_credentials FROM PUBLIC",
+  );
+  await applyMigrations({
+    pool: environment.pool,
+    runtimeRole: environment.runtimeRole,
+  });
+
+  await environment.pool.query(
+    `GRANT DELETE ON homepage_content TO "${environment.inheritedRole}"`,
+  );
+  await assert.rejects(
+    applyMigrations({
+      pool: environment.pool,
+      runtimeRole: environment.runtimeRole,
+    }),
+    /DELETE on homepage_content/,
   );
 });
 
