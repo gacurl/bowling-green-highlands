@@ -5,6 +5,8 @@ import path from "node:path";
 const MIGRATION_PATTERN = /^\d{4}_[a-z0-9_]+\.sql$/;
 const ROLE_PATTERN = /^[a-z_][a-z0-9_]*$/;
 const MIGRATION_LOCK_ID = 261;
+const MIGRATION_TARGETS = new Set(["preview", "production"]);
+const MIGRATION_TARGET_SETTING = "bgh.migration_target";
 const TABLE_PRIVILEGES = [
   "SELECT",
   "INSERT",
@@ -75,6 +77,42 @@ async function verifyRuntimePrivileges(client, runtimeRole) {
   }
 }
 
+async function verifyMigrationTarget(client, target, confirmProduction) {
+  const result = await client.query(`
+    SELECT substring(configured.setting FROM length('${MIGRATION_TARGET_SETTING}=') + 1)
+      AS target
+    FROM pg_db_role_setting AS role_setting
+    JOIN pg_database AS target_database
+      ON target_database.oid = role_setting.setdatabase
+    CROSS JOIN LATERAL unnest(role_setting.setconfig) AS configured(setting)
+    WHERE target_database.datname = current_database()
+      AND role_setting.setrole = 0
+      AND split_part(configured.setting, '=', 1) = '${MIGRATION_TARGET_SETTING}'
+  `);
+
+  if (result.rows.length === 0) {
+    throw new Error("Database migration target marker is missing");
+  }
+
+  if (result.rows.length !== 1) {
+    throw new Error("Database migration target marker is ambiguous");
+  }
+
+  const actualTarget = result.rows[0].target;
+
+  if (!MIGRATION_TARGETS.has(actualTarget)) {
+    throw new Error("Database migration target marker is malformed");
+  }
+
+  if (actualTarget !== target) {
+    throw new Error("Requested migration target does not match the database marker");
+  }
+
+  if (actualTarget === "production" && !confirmProduction) {
+    throw new Error("Production migration requires explicit confirmation");
+  }
+}
+
 export async function loadMigrations(
   migrationsDirectory = path.join(process.cwd(), "db", "migrations"),
 ) {
@@ -100,16 +138,23 @@ export async function loadMigrations(
 }
 
 export async function applyMigrations({
+  confirmProduction = false,
   pool,
   runtimeRole,
+  target,
   migrationsDirectory,
 }) {
+  if (!MIGRATION_TARGETS.has(target)) {
+    throw new Error("Migration target must be preview or production");
+  }
+
   const migrations = await loadMigrations(migrationsDirectory);
   const quotedRuntimeRole = quoteIdentifier(runtimeRole);
   const client = await pool.connect();
 
   try {
     await client.query("BEGIN");
+    await verifyMigrationTarget(client, target, confirmProduction);
     await client.query("SET LOCAL search_path TO public");
     await client.query("SELECT pg_advisory_xact_lock($1)", [MIGRATION_LOCK_ID]);
     await client.query(`

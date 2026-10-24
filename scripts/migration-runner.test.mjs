@@ -5,7 +5,10 @@ import path from "node:path";
 import test from "node:test";
 import { randomUUID } from "node:crypto";
 import pg from "pg";
-import { applyMigrations, loadMigrations } from "./migration-runner.mjs";
+import {
+  applyMigrations as applyMigrationsAtTarget,
+  loadMigrations,
+} from "./migration-runner.mjs";
 
 const { Pool } = pg;
 const TABLE_PRIVILEGES = [
@@ -26,6 +29,10 @@ const EXPECTED_TABLE_PRIVILEGES = {
 const SEQUENCE_PRIVILEGES = ["USAGE", "SELECT", "UPDATE"];
 const RESERVATION_SEQUENCE = "reservation_requests_sequence_id_seq";
 
+function applyMigrations(options) {
+  return applyMigrationsAtTarget({ target: "preview", ...options });
+}
+
 function getTestDatabaseUrl() {
   const databaseUrl = process.env.TEST_DATABASE_URL?.trim();
 
@@ -36,7 +43,7 @@ function getTestDatabaseUrl() {
   return databaseUrl;
 }
 
-async function createMigrationEnvironment() {
+async function createMigrationEnvironment({ marker = "preview" } = {}) {
   const suffix = randomUUID().replaceAll("-", "");
   const databaseName = `bgh_migration_${suffix}`;
   const inheritedRole = `bgh_inherited_${suffix}`;
@@ -47,6 +54,16 @@ async function createMigrationEnvironment() {
   await adminPool.query(`CREATE ROLE "${runtimeRole}" NOLOGIN`);
   await adminPool.query(`GRANT "${inheritedRole}" TO "${runtimeRole}"`);
   await adminPool.query(`CREATE DATABASE "${databaseName}"`);
+
+  if (marker !== null) {
+    if (!/^[a-z]+$/.test(marker)) {
+      throw new Error("Invalid synthetic migration target marker");
+    }
+
+    await adminPool.query(
+      `ALTER DATABASE "${databaseName}" SET bgh.migration_target TO '${marker}'`,
+    );
+  }
 
   const databaseUrl = new URL(getTestDatabaseUrl());
   databaseUrl.pathname = `/${databaseName}`;
@@ -71,6 +88,42 @@ async function createMigrationEnvironment() {
       await adminPool.query(`DROP ROLE "${inheritedRole}"`);
       await adminPool.end();
     },
+  };
+}
+
+async function assertNoMigrationState(pool) {
+  const result = await pool.query(`
+    SELECT
+      to_regclass('public.bgh_schema_migrations') AS migration_table,
+      to_regclass('public.admin_owner_credentials') AS credential_table
+  `);
+
+  assert.equal(result.rows[0].migration_table, null);
+  assert.equal(result.rows[0].credential_table, null);
+}
+
+function createMarkerResultPool(rows) {
+  const queries = [];
+  const client = {
+    async query(text) {
+      queries.push(text);
+
+      if (text.includes("FROM pg_db_role_setting")) {
+        return { rows };
+      }
+
+      return { rows: [] };
+    },
+    release() {},
+  };
+
+  return {
+    pool: {
+      async connect() {
+        return client;
+      },
+    },
+    queries,
   };
 }
 
@@ -117,6 +170,147 @@ async function assertEffectiveRuntimePrivileges(pool, runtimeRole) {
     );
   }
 }
+
+test("migration execution requires an explicit valid target", async () => {
+  const pool = {
+    async connect() {
+      assert.fail("invalid targets must fail before connecting");
+    },
+  };
+
+  await assert.rejects(
+    applyMigrationsAtTarget({ pool, runtimeRole: "bgh_runtime" }),
+    /target must be preview or production/,
+  );
+  await assert.rejects(
+    applyMigrationsAtTarget({
+      pool,
+      runtimeRole: "bgh_runtime",
+      target: "staging",
+    }),
+    /target must be preview or production/,
+  );
+});
+
+test("missing and malformed database target markers fail before writes", async () => {
+  for (const [marker, expectedError] of [
+    [null, /marker is missing/],
+    ["staging", /marker is malformed/],
+  ]) {
+    const environment = await createMigrationEnvironment({ marker });
+
+    try {
+      await assert.rejects(
+        applyMigrations({
+          pool: environment.pool,
+          runtimeRole: environment.runtimeRole,
+        }),
+        expectedError,
+      );
+      await assertNoMigrationState(environment.pool);
+    } finally {
+      await environment.cleanup();
+    }
+  }
+});
+
+test("ambiguous database target markers fail before writes", async () => {
+  const markerResult = createMarkerResultPool([
+    { target: "preview" },
+    { target: "production" },
+  ]);
+
+  await assert.rejects(
+    applyMigrations({
+      pool: markerResult.pool,
+      runtimeRole: "bgh_runtime",
+    }),
+    /marker is ambiguous/,
+  );
+  assert.equal(
+    markerResult.queries.some((query) => query.includes("CREATE TABLE")),
+    false,
+  );
+});
+
+test("database target mismatch and unconfirmed Production fail before writes", async () => {
+  const environment = await createMigrationEnvironment({ marker: "production" });
+
+  try {
+    await assert.rejects(
+      applyMigrations({
+        pool: environment.pool,
+        runtimeRole: environment.runtimeRole,
+      }),
+      /does not match/,
+    );
+    await assertNoMigrationState(environment.pool);
+
+    await assert.rejects(
+      applyMigrationsAtTarget({
+        pool: environment.pool,
+        runtimeRole: environment.runtimeRole,
+        target: "production",
+      }),
+      /requires explicit confirmation/,
+    );
+    await assertNoMigrationState(environment.pool);
+  } finally {
+    await environment.cleanup();
+  }
+});
+
+test("database-scoped target ignores session and role spoofing", async (t) => {
+  const environment = await createMigrationEnvironment();
+  t.after(environment.cleanup);
+  const client = await environment.pool.connect();
+  const identifiers = await client.query(`
+    SELECT
+      quote_ident(current_user) AS role,
+      quote_ident(current_database()) AS database
+  `);
+
+  await client.query(
+    `ALTER ROLE ${identifiers.rows[0].role} IN DATABASE ${identifiers.rows[0].database} ` +
+      "SET bgh.migration_target TO 'production'",
+  );
+  await client.query("SET bgh.migration_target TO 'production'");
+  await applyMigrations({
+    pool: {
+      async connect() {
+        return client;
+      },
+    },
+    runtimeRole: environment.runtimeRole,
+  });
+
+  assert.equal(
+    (
+      await environment.pool.query(
+        "SELECT count(*)::int AS count FROM bgh_schema_migrations",
+      )
+    ).rows[0].count,
+    1,
+  );
+});
+
+test("confirmed Production target applies migrations", async (t) => {
+  const environment = await createMigrationEnvironment({ marker: "production" });
+  t.after(environment.cleanup);
+
+  const result = await applyMigrationsAtTarget({
+    confirmProduction: true,
+    pool: environment.pool,
+    runtimeRole: environment.runtimeRole,
+    target: "production",
+  });
+
+  assert.deepEqual(result, ["0001_durable_persistence.sql"]);
+  await assertEffectiveRuntimePrivileges(
+    environment.pool,
+    environment.runtimeRole,
+  );
+});
 
 test("migrations are repeatable, serialized, and grant only runtime DML", async (t) => {
   const environment = await createMigrationEnvironment();
