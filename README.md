@@ -65,19 +65,39 @@ MIGRATION_DATABASE_URL='<migration-connection-string>' npm run db:migrate -- \
 Production additionally requires `--confirm-production`. The migration command
 requires target-specific `BGH_PREVIEW_NEON_PROJECT_ID` and
 `BGH_PREVIEW_NEON_BRANCH_ID` values (or their `BGH_PRODUCTION_*` equivalents).
-It verifies that the database has matching database-wide settings before any
-schema write:
+Before provisioning migration identity, use the authenticated Neon Console to
+select the intended branch and independently verify its project, branch, and
+compute endpoint IDs. Then, as that target's migration role, provision the
+identity table manually:
 
 ```sql
-ALTER DATABASE "<preview-database>" SET bgh.migration_target TO 'preview';
-ALTER DATABASE "<preview-database>" SET bgh.neon_project_id TO '<project-id>';
-ALTER DATABASE "<preview-database>" SET bgh.neon_branch_id TO '<branch-id>';
+BEGIN;
+CREATE TABLE IF NOT EXISTS public.bgh_migration_identity (
+  singleton BOOLEAN PRIMARY KEY DEFAULT TRUE CHECK (singleton),
+  migration_target TEXT NOT NULL CHECK (
+    migration_target IN ('preview', 'production')
+  ),
+  neon_project_id TEXT NOT NULL,
+  neon_branch_id TEXT NOT NULL
+);
+REVOKE ALL PRIVILEGES ON public.bgh_migration_identity
+  FROM PUBLIC, bgh_preview_app;
+INSERT INTO public.bgh_migration_identity (
+  singleton, migration_target, neon_project_id, neon_branch_id
+) VALUES (TRUE, 'preview', '<project-id>', '<branch-id>')
+ON CONFLICT (singleton) DO UPDATE SET
+  migration_target = EXCLUDED.migration_target,
+  neon_project_id = EXCLUDED.neon_project_id,
+  neon_branch_id = EXCLUDED.neon_branch_id;
+COMMIT;
 ```
 
-Provision the Production database with its own values and a `production` target.
-Reverify and reprovision these settings after cloning or resetting a branch.
-They are operator attestations, not Neon control-plane proof; a privileged
-administrator can change them. Provider identity confirmation remains separate.
+The runner only reads this table; it never creates, modifies, or repairs it. It
+requires one valid row, ownership by the authenticated migration role, and no
+effective runtime access before any migration write. Provision Production with
+its own verified values and a `production` target. Reverify and reprovision after
+cloning or resetting a branch. These values remain operator attestations, not
+Neon control-plane proof; a privileged administrator can change them.
 
 Preview requires the runtime role `bgh_preview_app`. For both targets, the
 migration role must be distinct from the runtime role. The runtime role must not

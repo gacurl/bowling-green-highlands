@@ -28,6 +28,7 @@ const EXPECTED_TABLE_PRIVILEGES = {
 };
 const SEQUENCE_PRIVILEGES = ["USAGE", "SELECT", "UPDATE"];
 const RESERVATION_SEQUENCE = "reservation_requests_sequence_id_seq";
+const MIGRATION_IDENTITY_TABLE = "public.bgh_migration_identity";
 const PREVIEW_RUNTIME_ROLE = "bgh_preview_app";
 const TEST_NEON_PROJECT_ID = "bgh-test-project";
 const TEST_PREVIEW_BRANCH_ID = "br-preview-test";
@@ -64,6 +65,8 @@ function getTestDatabaseUrl() {
 
 async function createMigrationEnvironment({
   branchMarker = TEST_PREVIEW_BRANCH_ID,
+  identityOwner = "migration",
+  identityRelation = "table",
   marker = "preview",
   projectMarker = TEST_NEON_PROJECT_ID,
   target = "preview",
@@ -80,26 +83,49 @@ async function createMigrationEnvironment({
   await adminPool.query(`GRANT "${inheritedRole}" TO "${runtimeRole}"`);
   await adminPool.query(`CREATE DATABASE "${databaseName}"`);
 
-  for (const [setting, value] of [
-    ["bgh.migration_target", marker],
-    ["bgh.neon_project_id", projectMarker],
-    ["bgh.neon_branch_id", branchMarker],
-  ]) {
-    if (value !== null) {
-      if (!/^[A-Za-z0-9-]+$/.test(value)) {
-        throw new Error("Invalid synthetic database identity marker");
-      }
-
-      await adminPool.query(
-        `ALTER DATABASE "${databaseName}" SET ${setting} TO '${value}'`,
-      );
-    }
-  }
-
   const databaseUrl = new URL(getTestDatabaseUrl());
   databaseUrl.pathname = `/${databaseName}`;
   const pool = new Pool({ connectionString: databaseUrl.toString(), max: 4 });
   await pool.query("REVOKE CREATE ON SCHEMA public FROM PUBLIC");
+
+  if (identityRelation === "view") {
+    await pool.query(`
+      CREATE VIEW ${MIGRATION_IDENTITY_TABLE} AS
+      SELECT
+        'preview'::text AS migration_target,
+        '${TEST_NEON_PROJECT_ID}'::text AS neon_project_id,
+        '${TEST_PREVIEW_BRANCH_ID}'::text AS neon_branch_id
+    `);
+  } else if (identityRelation === "table") {
+    await pool.query(`
+      CREATE TABLE ${MIGRATION_IDENTITY_TABLE} (
+        singleton BOOLEAN PRIMARY KEY DEFAULT TRUE CHECK (singleton),
+        migration_target TEXT NOT NULL,
+        neon_project_id TEXT NOT NULL,
+        neon_branch_id TEXT NOT NULL
+      )
+    `);
+
+    if (marker !== null && projectMarker !== null && branchMarker !== null) {
+      await pool.query(
+        `
+          INSERT INTO ${MIGRATION_IDENTITY_TABLE} (
+            migration_target,
+            neon_project_id,
+            neon_branch_id
+          )
+          VALUES ($1, $2, $3)
+        `,
+        [marker, projectMarker, branchMarker],
+      );
+    }
+
+    if (identityOwner === "inherited") {
+      await pool.query(
+        `ALTER TABLE ${MIGRATION_IDENTITY_TABLE} OWNER TO "${inheritedRole}"`,
+      );
+    }
+  }
 
   return {
     adminPool,
@@ -133,13 +159,27 @@ async function assertNoMigrationState(pool) {
   assert.equal(result.rows[0].credential_table, null);
 }
 
-function createMarkerResultPool(rows) {
+function createIdentityResultPool(rows, relation = {}) {
   const queries = [];
   const client = {
     async query(text) {
       queries.push(text);
 
-      if (text.includes("FROM pg_db_role_setting")) {
+      if (text.includes("FROM pg_class AS identity_table")) {
+        return {
+          rows: [
+            {
+              migration_role: "migration_role",
+              relkind: "r",
+              session_role: "migration_role",
+              table_owner: "migration_role",
+              ...relation,
+            },
+          ],
+        };
+      }
+
+      if (text.includes(`FROM ${MIGRATION_IDENTITY_TABLE}`)) {
         return { rows };
       }
 
@@ -186,6 +226,15 @@ async function assertEffectiveRuntimePrivileges(pool, runtimeRole) {
         `${privilege} on ${table}`,
       );
     }
+  }
+
+  for (const privilege of TABLE_PRIVILEGES) {
+    const result = await pool.query(
+      "SELECT has_table_privilege($1, $2, $3) AS allowed",
+      [runtimeRole, MIGRATION_IDENTITY_TABLE, privilege],
+    );
+
+    assert.equal(result.rows[0].allowed, false, `${privilege} on identity table`);
   }
 
   for (const privilege of SEQUENCE_PRIVILEGES) {
@@ -264,12 +313,13 @@ test("Preview migrations require the fixed Preview runtime role", async () => {
   );
 });
 
-test("missing and malformed database target markers fail before writes", async () => {
-  for (const [marker, expectedError] of [
-    [null, /marker is missing/],
-    ["staging", /marker is malformed/],
+test("missing and malformed database identity fails before writes", async () => {
+  for (const [options, expectedError] of [
+    [{ identityRelation: null }, /identity table is missing/],
+    [{ marker: null }, /identity row is missing/],
+    [{ marker: "staging" }, /target marker is malformed/],
   ]) {
-    const environment = await createMigrationEnvironment({ marker });
+    const environment = await createMigrationEnvironment(options);
 
     try {
       await assert.rejects(
@@ -286,44 +336,35 @@ test("missing and malformed database target markers fail before writes", async (
   }
 });
 
-test("ambiguous database identity markers fail before writes", async () => {
-  const baseRows = [
-    { name: "bgh.migration_target", value: "preview" },
-    { name: "bgh.neon_project_id", value: TEST_NEON_PROJECT_ID },
-    { name: "bgh.neon_branch_id", value: TEST_PREVIEW_BRANCH_ID },
-  ];
+test("duplicate database identity rows fail before writes", async () => {
+  const identityResult = createIdentityResultPool([
+    {
+      migration_target: "preview",
+      neon_project_id: TEST_NEON_PROJECT_ID,
+      neon_branch_id: TEST_PREVIEW_BRANCH_ID,
+    },
+    {
+      migration_target: "production",
+      neon_project_id: "another-project",
+      neon_branch_id: "br-another-branch",
+    },
+  ]);
 
-  for (const duplicate of [
-    { name: "bgh.migration_target", value: "production" },
-    { name: "bgh.neon_project_id", value: "another-project" },
-    { name: "bgh.neon_branch_id", value: "br-another-branch" },
-  ]) {
-    const markerResult = createMarkerResultPool([...baseRows, duplicate]);
-
-    await assert.rejects(
-      applyMigrations({
-        pool: markerResult.pool,
-        runtimeRole: PREVIEW_RUNTIME_ROLE,
-      }),
-      /identity marker is ambiguous/,
-    );
-    assert.equal(
-      markerResult.queries.some((query) => query.includes("CREATE TABLE")),
-      false,
-    );
-  }
+  await assert.rejects(
+    applyMigrations({
+      pool: identityResult.pool,
+      runtimeRole: PREVIEW_RUNTIME_ROLE,
+    }),
+    /identity row is duplicated/,
+  );
+  assert.equal(
+    identityResult.queries.some((query) => query.includes("CREATE TABLE")),
+    false,
+  );
 });
 
 test("Neon identity markers are required, valid, and target-specific", async () => {
   const cases = [
-    {
-      options: { projectMarker: null },
-      expectedError: /marker is missing: bgh.neon_project_id/,
-    },
-    {
-      options: { branchMarker: null },
-      expectedError: /marker is missing: bgh.neon_branch_id/,
-    },
     {
       options: { projectMarker: "INVALID" },
       expectedError: /project ID marker is malformed/,
@@ -358,6 +399,86 @@ test("Neon identity markers are required, valid, and target-specific", async () 
       await environment.cleanup();
     }
   }
+});
+
+test("identity must be an ordinary table owned by the login role", async () => {
+  for (const [options, expectedError] of [
+    [{ identityRelation: "view" }, /must be an ordinary table/],
+    [{ identityOwner: "inherited" }, /owned by the authenticated migration role/],
+  ]) {
+    const environment = await createMigrationEnvironment(options);
+
+    try {
+      await assert.rejects(
+        applyMigrations({
+          pool: environment.pool,
+          runtimeRole: environment.runtimeRole,
+        }),
+        expectedError,
+      );
+      await assertNoMigrationState(environment.pool);
+    } finally {
+      await environment.cleanup();
+    }
+  }
+
+  const roleMismatch = createIdentityResultPool([], {
+    session_role: "authenticated_role",
+  });
+  await assert.rejects(
+    applyMigrations({
+      pool: roleMismatch.pool,
+      runtimeRole: PREVIEW_RUNTIME_ROLE,
+    }),
+    /owned by the authenticated migration role/,
+  );
+});
+
+test("effective runtime and PUBLIC identity access fails before writes", async (t) => {
+  const environment = await createMigrationEnvironment();
+  t.after(environment.cleanup);
+
+  await environment.pool.query(
+    `GRANT SELECT ON ${MIGRATION_IDENTITY_TABLE} TO PUBLIC`,
+  );
+  await assert.rejects(
+    applyMigrations({
+      pool: environment.pool,
+      runtimeRole: environment.runtimeRole,
+    }),
+    /must not have SELECT on migration identity/,
+  );
+  await assertNoMigrationState(environment.pool);
+  await environment.pool.query(
+    `REVOKE SELECT ON ${MIGRATION_IDENTITY_TABLE} FROM PUBLIC`,
+  );
+
+  await environment.pool.query(
+    `GRANT SELECT ON ${MIGRATION_IDENTITY_TABLE} TO "${environment.inheritedRole}"`,
+  );
+  await assert.rejects(
+    applyMigrations({
+      pool: environment.pool,
+      runtimeRole: environment.runtimeRole,
+    }),
+    /must not have SELECT on migration identity/,
+  );
+  await assertNoMigrationState(environment.pool);
+  await environment.pool.query(
+    `REVOKE SELECT ON ${MIGRATION_IDENTITY_TABLE} FROM "${environment.inheritedRole}"`,
+  );
+
+  await environment.pool.query(
+    `GRANT UPDATE (neon_branch_id) ON ${MIGRATION_IDENTITY_TABLE} TO "${environment.inheritedRole}"`,
+  );
+  await assert.rejects(
+    applyMigrations({
+      pool: environment.pool,
+      runtimeRole: environment.runtimeRole,
+    }),
+    /must not have column UPDATE on migration identity/,
+  );
+  await assertNoMigrationState(environment.pool);
 });
 
 test("database target mismatch and unconfirmed Production fail before writes", async () => {
