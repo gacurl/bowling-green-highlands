@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import path from "node:path";
 import test from "node:test";
+import type { DatabaseAccess } from "../../lib/server/database";
+import {
+  createTestDatabase,
+  createUnavailableTestDatabase,
+  failDatabaseMutations,
+} from "../../lib/test-support/postgres-test-database";
 import {
   authorizeAdminPasswordSetup,
   getAdminPasswordSetupOutcome,
@@ -27,26 +30,24 @@ const OWNER_PASSWORD = "synthetic-first-owner-password";
 const OTHER_PASSWORD = "synthetic-other-password";
 
 async function createCredentialStorePath() {
-  const directory = await mkdtemp(
-    path.join(tmpdir(), "bgh-admin-password-setup-"),
-  );
-
-  return path.join(directory, "admin-owner-credential.json");
+  return createTestDatabase();
 }
 
-function createBootstrapOptions(storePath: string): AdminPasswordSetupOptions {
+function createBootstrapOptions(
+  database: DatabaseAccess,
+): AdminPasswordSetupOptions {
   return {
     adminPassword: BOOTSTRAP_PASSWORD,
     bootstrapMode: ADMIN_BOOTSTRAP_MODE_ENABLED_VALUE,
     recoveryMode: undefined,
-    storePath,
+    database,
   };
 }
 
-async function createBootstrapCookie(storePath: string) {
+async function createBootstrapCookie(database: DatabaseAccess) {
   const authentication = await authenticateAdminPassword(
     BOOTSTRAP_PASSWORD,
-    createBootstrapOptions(storePath),
+    createBootstrapOptions(database),
   );
 
   assert.equal(authentication.kind, "authenticated");
@@ -59,10 +60,10 @@ async function createBootstrapCookie(storePath: string) {
 }
 
 test("matching password initializes owner access and invalidates bootstrap sessions", async () => {
-  const storePath = await createCredentialStorePath();
-  const firstBootstrapCookie = await createBootstrapCookie(storePath);
-  const anotherBootstrapCookie = await createBootstrapCookie(storePath);
-  const options = createBootstrapOptions(storePath);
+  const database = await createCredentialStorePath();
+  const firstBootstrapCookie = await createBootstrapCookie(database);
+  const anotherBootstrapCookie = await createBootstrapCookie(database);
+  const options = createBootstrapOptions(database);
   const result = await setupAdminOwnerPassword(
     {
       confirmation: OWNER_PASSWORD,
@@ -103,15 +104,15 @@ test("matching password initializes owner access and invalidates bootstrap sessi
 });
 
 test("setup rejects unauthenticated, owner, and recovery sessions", async () => {
-  const storePath = await createCredentialStorePath();
-  const bootstrapOptions = createBootstrapOptions(storePath);
+  const database = await createCredentialStorePath();
+  const bootstrapOptions = createBootstrapOptions(database);
 
   assert.equal(
     await authorizeAdminPasswordSetup(undefined, bootstrapOptions),
     "invalid_session",
   );
 
-  await replaceAdminOwnerCredential(OWNER_PASSWORD, storePath);
+  await replaceAdminOwnerCredential(OWNER_PASSWORD, database);
   const ownerAuthentication = await authenticateAdminPassword(
     OWNER_PASSWORD,
     bootstrapOptions,
@@ -150,12 +151,12 @@ test("setup rejects unauthenticated, owner, and recovery sessions", async () => 
 });
 
 test("disabling bootstrap mode makes an existing bootstrap session stale", async () => {
-  const storePath = await createCredentialStorePath();
-  const cookieValue = await createBootstrapCookie(storePath);
+  const database = await createCredentialStorePath();
+  const cookieValue = await createBootstrapCookie(database);
 
   assert.equal(
     await authorizeAdminPasswordSetup(cookieValue, {
-      ...createBootstrapOptions(storePath),
+      ...createBootstrapOptions(database),
       bootstrapMode: undefined,
     }),
     "invalid_session",
@@ -163,9 +164,9 @@ test("disabling bootstrap mode makes an existing bootstrap session stale", async
 });
 
 test("mismatched and invalid passwords leave credential state missing", async () => {
-  const storePath = await createCredentialStorePath();
-  const cookieValue = await createBootstrapCookie(storePath);
-  const options = createBootstrapOptions(storePath);
+  const database = await createCredentialStorePath();
+  const cookieValue = await createBootstrapCookie(database);
+  const options = createBootstrapOptions(database);
 
   assert.equal(
     await setupAdminOwnerPassword(
@@ -189,13 +190,13 @@ test("mismatched and invalid passwords leave credential state missing", async ()
     ),
     "invalid_new_password",
   );
-  assert.equal((await readAdminOwnerCredential(storePath)).kind, "missing");
+  assert.equal((await readAdminOwnerCredential(database)).kind, "missing");
 });
 
 test("persistence failure creates no partial owner credential", async () => {
-  const storePath = await createCredentialStorePath();
-  const cookieValue = await createBootstrapCookie(storePath);
-  await mkdir(`${storePath}.tmp`);
+  const database = await createCredentialStorePath();
+  const cookieValue = await createBootstrapCookie(database);
+  const failingDatabase = failDatabaseMutations(database);
 
   assert.equal(
     await setupAdminOwnerPassword(
@@ -204,28 +205,21 @@ test("persistence failure creates no partial owner credential", async () => {
         cookieValue,
         newPassword: OWNER_PASSWORD,
       },
-      createBootstrapOptions(storePath),
+      createBootstrapOptions(failingDatabase),
     ),
     "persistence_failed",
   );
-  assert.equal((await readAdminOwnerCredential(storePath)).kind, "missing");
+  assert.equal((await readAdminOwnerCredential(database)).kind, "missing");
 });
 
-test("malformed and unreadable state make setup unavailable", async () => {
-  const malformedStorePath = await createCredentialStorePath();
-  await writeFile(malformedStorePath, "malformed credential state\n", "utf8");
-  const unreadableStorePath = await createCredentialStorePath();
-  await mkdir(unreadableStorePath);
-
-  for (const storePath of [malformedStorePath, unreadableStorePath]) {
-    assert.equal(
-      await authorizeAdminPasswordSetup(
-        "synthetic-bootstrap-cookie",
-        createBootstrapOptions(storePath),
-      ),
-      "unavailable",
-    );
-  }
+test("unavailable credential state makes setup unavailable", async () => {
+  assert.equal(
+    await authorizeAdminPasswordSetup(
+      "synthetic-bootstrap-cookie",
+      createBootstrapOptions(createUnavailableTestDatabase()),
+    ),
+    "unavailable",
+  );
 });
 
 test("setup redirects and errors never contain submitted passwords", () => {

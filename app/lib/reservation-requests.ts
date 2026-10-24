@@ -1,6 +1,9 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import path from "node:path";
+import {
+  getDatabase,
+  type DatabaseAccess,
+  type DatabaseQueryable,
+} from "../../lib/server/database";
 import type { EventTypeValue } from "./event-type";
 
 export type ReservationRequestStatus = "pending" | "accepted" | "declined";
@@ -26,8 +29,17 @@ export type ReservationRequestRecord = {
   statusUpdatedAt?: string;
 };
 
-type ReservationRequestStoreFile = {
-  requests?: unknown;
+type ReservationRequestRow = {
+  created_at: string;
+  event_type: EventTypeValue;
+  guest_email: string;
+  guest_name: string;
+  id: string;
+  payment_status: ReservationPaymentStatus;
+  request_notes: string;
+  requested_dates: string;
+  status: ReservationRequestStatus;
+  status_updated_at: string | null;
 };
 
 type CreateReservationRequestInput = {
@@ -38,113 +50,107 @@ type CreateReservationRequestInput = {
   requestedDates: string;
 };
 
+const RESERVATION_REQUEST_COLUMNS = `
+  id,
+  created_at,
+  event_type,
+  guest_email,
+  guest_name,
+  payment_status,
+  request_notes,
+  requested_dates,
+  status,
+  status_updated_at
+`;
+
 export function isReservationRequestStatusUpdate(
   value: string,
 ): value is ReservationRequestStatusUpdate {
   return value === "accepted" || value === "declined";
 }
 
-function getReservationRequestStorePath() {
-  return (
-    process.env.BGH_RESERVATION_REQUESTS_STORE_PATH ??
-    path.join(process.cwd(), "data", "reservation-requests.json")
-  );
-}
-
-function normalizeReservationRequestRecord(
-  value: unknown,
-): ReservationRequestRecord | null {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return null;
-  }
-
-  const record = value as Record<string, unknown>;
-
-  if (
-    typeof record.id !== "string" ||
-    typeof record.createdAt !== "string" ||
-    typeof record.guestName !== "string" ||
-    typeof record.guestEmail !== "string" ||
-    typeof record.requestNotes !== "string" ||
-    typeof record.requestedDates !== "string" ||
-    typeof record.eventType !== "string" ||
-    (record.status !== "pending" &&
-      record.status !== "accepted" &&
-      record.status !== "declined")
-  ) {
-    return null;
-  }
-
+function toReservationRequestRecord(
+  row: ReservationRequestRow,
+): ReservationRequestRecord {
   return {
-    createdAt: record.createdAt,
-    eventType: record.eventType as EventTypeValue,
-    guestEmail: record.guestEmail,
-    guestName: record.guestName,
-    id: record.id,
-    paymentStatus: record.paymentStatus === "paid" ? "paid" : "unpaid",
-    requestNotes: record.requestNotes,
-    requestedDates: record.requestedDates,
-    status: record.status,
-    statusUpdatedAt:
-      typeof record.statusUpdatedAt === "string" ? record.statusUpdatedAt : undefined,
+    createdAt: row.created_at,
+    eventType: row.event_type,
+    guestEmail: row.guest_email,
+    guestName: row.guest_name,
+    id: row.id,
+    paymentStatus: row.payment_status,
+    requestNotes: row.request_notes,
+    requestedDates: row.requested_dates,
+    status: row.status,
+    statusUpdatedAt: row.status_updated_at ?? undefined,
   };
 }
 
-function normalizeReservationRequestStore(
-  storeValue: unknown,
-): ReservationRequestRecord[] {
-  if (!storeValue || typeof storeValue !== "object" || Array.isArray(storeValue)) {
-    return [];
-  }
+async function readReservationRequestRows(database: DatabaseQueryable) {
+  const result = await database.query<ReservationRequestRow>(`
+    SELECT ${RESERVATION_REQUEST_COLUMNS}
+    FROM reservation_requests
+    ORDER BY sequence_id ASC
+  `);
 
-  const requests = (storeValue as ReservationRequestStoreFile).requests;
-
-  if (!Array.isArray(requests)) {
-    return [];
-  }
-
-  return requests
-    .map((requestRecord) => normalizeReservationRequestRecord(requestRecord))
-    .filter(
-      (requestRecord): requestRecord is ReservationRequestRecord =>
-        requestRecord !== null,
-    );
+  return result.rows.map(toReservationRequestRecord);
 }
 
-function toStoreFile(
-  requests: ReservationRequestRecord[],
-): ReservationRequestStoreFile {
-  return { requests };
+function isAcceptedSlotConstraintError(error: unknown) {
+  return (
+    error instanceof Error &&
+    "code" in error &&
+    error.code === "23505" &&
+    "constraint" in error &&
+    error.constraint === "reservation_requests_one_accepted_exact_slot"
+  );
 }
 
 export async function readReservationRequests(
-  storePath = getReservationRequestStorePath(),
+  database?: DatabaseAccess,
 ): Promise<ReservationRequestRecord[]> {
-  try {
-    const fileContents = await readFile(storePath, "utf8");
-    const parsedStore = JSON.parse(fileContents);
-
-    return normalizeReservationRequestStore(parsedStore);
-  } catch (error) {
-    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
-      return [];
-    }
-
-    throw error;
-  }
+  return readReservationRequestRows(getDatabase(database));
 }
 
 export async function writeReservationRequests(
   requests: ReservationRequestRecord[],
-  storePath = getReservationRequestStorePath(),
+  database?: DatabaseAccess,
 ) {
-  const directory = path.dirname(storePath);
-  const temporaryPath = `${storePath}.tmp`;
-  const serializedStore = `${JSON.stringify(toStoreFile(requests), null, 2)}\n`;
+  await getDatabase(database).transaction(async (client) => {
+    await client.query("DELETE FROM reservation_requests");
 
-  await mkdir(directory, { recursive: true });
-  await writeFile(temporaryPath, serializedStore, "utf8");
-  await rename(temporaryPath, storePath);
+    for (const request of requests) {
+      await client.query(
+        `
+          INSERT INTO reservation_requests (
+            id,
+            created_at,
+            event_type,
+            guest_email,
+            guest_name,
+            payment_status,
+            request_notes,
+            requested_dates,
+            status,
+            status_updated_at
+          )
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        `,
+        [
+          request.id,
+          request.createdAt,
+          request.eventType,
+          request.guestEmail,
+          request.guestName,
+          request.paymentStatus ?? "unpaid",
+          request.requestNotes,
+          request.requestedDates,
+          request.status,
+          request.statusUpdatedAt ?? null,
+        ],
+      );
+    }
+  });
 }
 
 export async function createReservationRequestRecord(
@@ -155,9 +161,8 @@ export async function createReservationRequestRecord(
     requestNotes,
     requestedDates,
   }: CreateReservationRequestInput,
-  storePath = getReservationRequestStorePath(),
+  database?: DatabaseAccess,
 ) {
-  const requests = await readReservationRequests(storePath);
   const requestRecord: ReservationRequestRecord = {
     createdAt: new Date().toISOString(),
     eventType,
@@ -170,8 +175,33 @@ export async function createReservationRequestRecord(
     status: "pending",
   };
 
-  requests.push(requestRecord);
-  await writeReservationRequests(requests, storePath);
+  await getDatabase(database).query(
+    `
+      INSERT INTO reservation_requests (
+        id,
+        created_at,
+        event_type,
+        guest_email,
+        guest_name,
+        payment_status,
+        request_notes,
+        requested_dates,
+        status
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+    `,
+    [
+      requestRecord.id,
+      requestRecord.createdAt,
+      requestRecord.eventType,
+      requestRecord.guestEmail,
+      requestRecord.guestName,
+      requestRecord.paymentStatus,
+      requestRecord.requestNotes,
+      requestRecord.requestedDates,
+      requestRecord.status,
+    ],
+  );
 
   return requestRecord;
 }
@@ -179,82 +209,115 @@ export async function createReservationRequestRecord(
 export async function updateReservationRequestStatus(
   requestId: string,
   status: ReservationRequestStatusUpdate,
-  storePath = getReservationRequestStorePath(),
+  database?: DatabaseAccess,
 ): Promise<"updated" | "not_found" | "invalid_transition" | "slot_conflict"> {
-  const requests = await readReservationRequests(storePath);
-  const request = requests.find((requestRecord) => requestRecord.id === requestId);
+  try {
+    return await getDatabase(database).transaction(async (client) => {
+      const requestResult = await client.query<{
+        requested_dates: string;
+        status: ReservationRequestStatus;
+      }>(
+        `
+          SELECT requested_dates, status
+          FROM reservation_requests
+          WHERE id = $1
+          FOR UPDATE
+        `,
+        [requestId],
+      );
+      const request = requestResult.rows[0];
 
-  if (!request) {
-    return "not_found";
-  }
+      if (!request) {
+        return "not_found";
+      }
 
-  if (request.status !== "pending") {
-    return "invalid_transition";
-  }
+      if (request.status !== "pending") {
+        return "invalid_transition";
+      }
 
-  if (status === "accepted") {
-    const hasAcceptedSlotConflict = requests.some(
-      (requestRecord) =>
-        requestRecord.id !== requestId &&
-        requestRecord.status === "accepted" &&
-        requestRecord.requestedDates === request.requestedDates,
-    );
+      if (status === "accepted") {
+        await client.query(
+          "SELECT pg_advisory_xact_lock(hashtextextended($1, 261))",
+          [request.requested_dates],
+        );
+        const conflict = await client.query(
+          `
+            SELECT 1
+            FROM reservation_requests
+            WHERE id <> $1
+              AND status = 'accepted'
+              AND requested_dates = $2
+            LIMIT 1
+          `,
+          [requestId, request.requested_dates],
+        );
 
-    if (hasAcceptedSlotConflict) {
+        if (conflict.rows.length > 0) {
+          return "slot_conflict";
+        }
+      }
+
+      await client.query(
+        `
+          UPDATE reservation_requests
+          SET status = $2,
+              status_updated_at = $3
+          WHERE id = $1
+        `,
+        [requestId, status, new Date().toISOString()],
+      );
+
+      return "updated";
+    });
+  } catch (error) {
+    if (isAcceptedSlotConstraintError(error)) {
       return "slot_conflict";
     }
+
+    throw error;
   }
-
-  let statusUpdated = false;
-  const updatedRequests = requests.map((requestRecord) => {
-    if (requestRecord.id !== requestId || statusUpdated) {
-      return requestRecord;
-    }
-
-    statusUpdated = true;
-
-    return {
-      ...requestRecord,
-      status,
-      statusUpdatedAt: new Date().toISOString(),
-    };
-  });
-
-  await writeReservationRequests(updatedRequests, storePath);
-
-  return "updated";
 }
 
 export async function markReservationRequestPaid(
   requestId: string,
-  storePath = getReservationRequestStorePath(),
+  database?: DatabaseAccess,
 ): Promise<MarkReservationRequestPaidResult> {
-  const requests = await readReservationRequests(storePath);
-  const requestIndex = requests.findIndex(
-    (requestRecord) => requestRecord.id === requestId,
-  );
+  return getDatabase(database).transaction(async (client) => {
+    const requestResult = await client.query<{
+      payment_status: ReservationPaymentStatus;
+      status: ReservationRequestStatus;
+    }>(
+      `
+        SELECT payment_status, status
+        FROM reservation_requests
+        WHERE id = $1
+        FOR UPDATE
+      `,
+      [requestId],
+    );
+    const request = requestResult.rows[0];
 
-  if (requestIndex === -1) {
-    return "not_found";
-  }
+    if (!request) {
+      return "not_found";
+    }
 
-  const request = requests[requestIndex];
+    if (request.status !== "accepted") {
+      return "not_accepted";
+    }
 
-  if (request.status !== "accepted") {
-    return "not_accepted";
-  }
+    if (request.payment_status === "paid") {
+      return "already_paid";
+    }
 
-  if (request.paymentStatus === "paid") {
-    return "already_paid";
-  }
+    await client.query(
+      `
+        UPDATE reservation_requests
+        SET payment_status = 'paid'
+        WHERE id = $1
+      `,
+      [requestId],
+    );
 
-  const updatedRequests = [...requests];
-  updatedRequests[requestIndex] = {
-    ...request,
-    paymentStatus: "paid",
-  };
-
-  await writeReservationRequests(updatedRequests, storePath);
-
-  return "updated";
+    return "updated";
+  });
 }

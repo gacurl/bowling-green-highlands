@@ -1,8 +1,6 @@
-import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import path from "node:path";
+import test from "node:test";
+import { createTestDatabase } from "./test-support/postgres-test-database";
 import {
   isDateAvailable,
   isDateUnavailable,
@@ -11,16 +9,9 @@ import {
   toOperatorAvailability,
 } from "./operator-availability";
 
-async function createStorePath() {
-  const directory = await mkdtemp(path.join(tmpdir(), "bgh-availability-"));
-
-  return path.join(directory, "operator-availability.json");
-}
-
-test("returns empty operator availability when no store exists", async () => {
-  const availability = await readOperatorAvailability(await createStorePath());
-
-  assert.deepEqual(availability, {});
+test("returns empty operator availability when no rows exist", async () => {
+  const database = await createTestDatabase();
+  assert.deepEqual(await readOperatorAvailability(database), {});
 });
 
 test("treats unconfigured dates as unavailable by default", () => {
@@ -28,86 +19,49 @@ test("treats unconfigured dates as unavailable by default", () => {
   assert.equal(isDateAvailable({}, "2026-07-01"), false);
 });
 
-test("persists a blocked date across reads", async () => {
-  const storePath = await createStorePath();
+test("persists blocked and explicitly available dates", async () => {
+  const database = await createTestDatabase();
 
-  await setOperatorDateAvailability("2026-06-14", "unavailable", storePath);
+  await setOperatorDateAvailability("2026-06-14", "unavailable", database);
+  await setOperatorDateAvailability("2026-06-15", "available", database);
 
-  const availability = await readOperatorAvailability(storePath);
-
-  assert.equal(isDateUnavailable(availability, "2026-06-14"), true);
+  assert.deepEqual(
+    await readOperatorAvailability(database),
+    toOperatorAvailability({
+      "2026-06-14": "unavailable",
+      "2026-06-15": "available",
+    }),
+  );
 });
 
-test("persists an explicitly available date", async () => {
-  const storePath = await createStorePath();
-
-  await setOperatorDateAvailability("2026-06-14", "unavailable", storePath);
-  await setOperatorDateAvailability("2026-06-14", "available", storePath);
-
-  const availability = await readOperatorAvailability(storePath);
-
-  assert.equal(isDateUnavailable(availability, "2026-06-14"), false);
-  assert.equal(isDateAvailable(availability, "2026-06-14"), true);
-});
-
-test("rejects invalid availability modes without changing persisted state", async () => {
-  const storePath = await createStorePath();
-
-  await setOperatorDateAvailability("2026-06-14", "available", storePath);
+test("rejects invalid modes and calendar dates without changing state", async () => {
+  const database = await createTestDatabase();
+  await setOperatorDateAvailability("2026-06-14", "available", database);
 
   await assert.rejects(
-    setOperatorDateAvailability(
-      "2026-06-14",
-      "blocked" as never,
-      storePath,
-    ),
+    setOperatorDateAvailability("2026-06-14", "blocked" as never, database),
     /Invalid availability mode/,
   );
-
-  const availability = await readOperatorAvailability(storePath);
-
-  assert.equal(isDateAvailable(availability, "2026-06-14"), true);
-});
-
-test("rejects invalid calendar dates without changing persisted state", async () => {
-  const storePath = await createStorePath();
-
-  await setOperatorDateAvailability("2026-06-14", "available", storePath);
-
   await assert.rejects(
-    setOperatorDateAvailability("2026-02-30", "unavailable", storePath),
+    setOperatorDateAvailability("2026-02-30", "unavailable", database),
     /Invalid availability date/,
   );
-
-  const availability = await readOperatorAvailability(storePath);
-
-  assert.deepEqual(
-    availability,
-    toOperatorAvailability({ "2026-06-14": "available" }),
+  assert.equal(
+    isDateAvailable(await readOperatorAvailability(database), "2026-06-14"),
+    true,
   );
 });
 
-test("normalizes persisted availability dates", async () => {
-  const storePath = await createStorePath();
+test("concurrent updates to different dates do not overwrite each other", async () => {
+  const database = await createTestDatabase();
 
-  await writeFile(
-    storePath,
-    JSON.stringify({
-      dates: {
-        "bad-date": "available",
-        "2026-02-30": "available",
-        "2026-06-14": "available",
-        "2026-06-15": "unavailable",
-        "2026-06-16": "bad-mode",
-      },
-    }),
-    "utf8",
-  );
-
-  const availability = await readOperatorAvailability(storePath);
+  await Promise.all([
+    setOperatorDateAvailability("2026-06-14", "available", database),
+    setOperatorDateAvailability("2026-06-15", "unavailable", database),
+  ]);
 
   assert.deepEqual(
-    availability,
+    await readOperatorAvailability(database),
     toOperatorAvailability({
       "2026-06-14": "available",
       "2026-06-15": "unavailable",
@@ -115,21 +69,23 @@ test("normalizes persisted availability dates", async () => {
   );
 });
 
-test("reads legacy blocked dates as unavailable dates", async () => {
-  const storePath = await createStorePath();
+test("database transaction rollback preserves availability", async () => {
+  const database = await createTestDatabase();
+  await setOperatorDateAvailability("2026-06-14", "available", database);
 
-  await writeFile(
-    storePath,
-    JSON.stringify({
-      blockedDates: ["bad-date", "2026-06-14", "2026-06-14", 42],
+  await assert.rejects(
+    database.transaction(async (client) => {
+      await client.query(
+        "UPDATE operator_availability SET mode = 'unavailable' WHERE availability_date = $1",
+        ["2026-06-14"],
+      );
+      throw new Error("rollback");
     }),
-    "utf8",
+    /rollback/,
   );
 
-  const availability = await readOperatorAvailability(storePath);
-
-  assert.deepEqual(
-    availability,
-    toOperatorAvailability({ "2026-06-14": "unavailable" }),
+  assert.equal(
+    isDateAvailable(await readOperatorAvailability(database), "2026-06-14"),
+    true,
   );
 });

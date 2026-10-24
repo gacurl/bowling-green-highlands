@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
-import { mkdtemp } from "node:fs/promises";
 import Module from "node:module";
-import { tmpdir } from "node:os";
-import path from "node:path";
 import test from "node:test";
+import {
+  setDatabaseForTests,
+  type DatabaseAccess,
+} from "../../../../lib/server/database";
+import { createTestDatabase } from "../../../../lib/test-support/postgres-test-database";
 import {
   ADMIN_BOOTSTRAP_MODE_ENABLED_VALUE,
   ADMIN_RECOVERY_MODE_ENABLED_VALUE,
@@ -52,16 +54,12 @@ const INVALID_PASSWORD = "synthetic-invalid-login-password";
 type LoginEnvironment = {
   adminPassword?: string;
   bootstrapMode?: string;
+  database: DatabaseAccess;
   recoveryMode?: string;
-  storePath: string;
 };
 
-async function createCredentialStorePath() {
-  const directory = await mkdtemp(
-    path.join(tmpdir(), "bgh-admin-login-submit-"),
-  );
-
-  return path.join(directory, "admin-owner-credential.json");
+async function createCredentialDatabase() {
+  return createTestDatabase();
 }
 
 function createLoginRequest(password: string, next = "/admin") {
@@ -82,7 +80,6 @@ function withLoginEnvironment(
     const previousAdminPassword = process.env.ADMIN_PASSWORD;
     const previousBootstrapMode = process.env.BGH_ADMIN_BOOTSTRAP_MODE;
     const previousRecoveryMode = process.env.BGH_ADMIN_RECOVERY_MODE;
-    const previousStorePath = process.env.BGH_ADMIN_CREDENTIAL_STORE_PATH;
 
     if (environment.adminPassword === undefined) {
       delete process.env.ADMIN_PASSWORD;
@@ -102,7 +99,7 @@ function withLoginEnvironment(
       process.env.BGH_ADMIN_RECOVERY_MODE = environment.recoveryMode;
     }
 
-    process.env.BGH_ADMIN_CREDENTIAL_STORE_PATH = environment.storePath;
+    setDatabaseForTests(environment.database);
 
     try {
       await runTest();
@@ -125,11 +122,7 @@ function withLoginEnvironment(
         process.env.BGH_ADMIN_RECOVERY_MODE = previousRecoveryMode;
       }
 
-      if (previousStorePath === undefined) {
-        delete process.env.BGH_ADMIN_CREDENTIAL_STORE_PATH;
-      } else {
-        process.env.BGH_ADMIN_CREDENTIAL_STORE_PATH = previousStorePath;
-      }
+      setDatabaseForTests(null);
     }
   };
 }
@@ -160,14 +153,14 @@ async function assertValidSessionCookie(
 }
 
 test("successful owner login redirects with 303 and preserves the requested destination", async () => {
-  const storePath = await createCredentialStorePath();
+  const database = await createCredentialDatabase();
   assert.equal(
-    (await replaceAdminOwnerCredential(OWNER_PASSWORD, storePath)).kind,
+    (await replaceAdminOwnerCredential(OWNER_PASSWORD, database)).kind,
     "replaced",
   );
 
   await withLoginEnvironment(
-    { storePath },
+    { database },
     async () => {
       const post = await getPostHandler();
       const response = await post(
@@ -189,13 +182,13 @@ test("successful owner login redirects with 303 and preserves the requested dest
 });
 
 test("successful bootstrap login redirects with 303 to password setup", async () => {
-  const storePath = await createCredentialStorePath();
+  const database = await createCredentialDatabase();
 
   await withLoginEnvironment(
     {
       adminPassword: BOOTSTRAP_PASSWORD,
       bootstrapMode: ADMIN_BOOTSTRAP_MODE_ENABLED_VALUE,
-      storePath,
+      database,
     },
     async () => {
       const post = await getPostHandler();
@@ -213,9 +206,9 @@ test("successful bootstrap login redirects with 303 to password setup", async ()
 });
 
 test("successful recovery login redirects with 303 to password recovery", async () => {
-  const storePath = await createCredentialStorePath();
+  const database = await createCredentialDatabase();
   assert.equal(
-    (await replaceAdminOwnerCredential(OWNER_PASSWORD, storePath)).kind,
+    (await replaceAdminOwnerCredential(OWNER_PASSWORD, database)).kind,
     "replaced",
   );
 
@@ -223,7 +216,7 @@ test("successful recovery login redirects with 303 to password recovery", async 
     {
       adminPassword: RECOVERY_PASSWORD,
       recoveryMode: ADMIN_RECOVERY_MODE_ENABLED_VALUE,
-      storePath,
+      database,
     },
     async () => {
       const post = await getPostHandler();
@@ -241,14 +234,14 @@ test("successful recovery login redirects with 303 to password recovery", async 
 });
 
 test("invalid password redirects with 303 and preserves the safe next parameter", async () => {
-  const storePath = await createCredentialStorePath();
+  const database = await createCredentialDatabase();
   assert.equal(
-    (await replaceAdminOwnerCredential(OWNER_PASSWORD, storePath)).kind,
+    (await replaceAdminOwnerCredential(OWNER_PASSWORD, database)).kind,
     "replaced",
   );
 
   await withLoginEnvironment(
-    { storePath },
+    { database },
     async () => {
       const post = await getPostHandler();
       const response = await post(
@@ -267,10 +260,10 @@ test("invalid password redirects with 303 and preserves the safe next parameter"
 });
 
 test("unavailable authentication redirects with 303 to not configured", async () => {
-  const storePath = await createCredentialStorePath();
+  const database = await createCredentialDatabase();
 
   await withLoginEnvironment(
-    { storePath },
+    { database },
     async () => {
       const post = await getPostHandler();
       const response = await post(createLoginRequest(INVALID_PASSWORD));

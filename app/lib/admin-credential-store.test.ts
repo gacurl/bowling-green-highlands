@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import path from "node:path";
 import test from "node:test";
+import {
+  createTestDatabase,
+  createUnavailableTestDatabase,
+  failDatabaseMutations,
+} from "../../lib/test-support/postgres-test-database";
 import {
   ADMIN_BOOTSTRAP_MODE_ENABLED_VALUE,
   ADMIN_RECOVERY_MODE_ENABLED_VALUE,
@@ -21,38 +23,41 @@ const SECOND_OWNER_PASSWORD = "synthetic-owner-password-two";
 const RECOVERY_PASSWORD = "synthetic-break-glass-password";
 
 async function createCredentialStorePath() {
-  const directory = await mkdtemp(path.join(tmpdir(), "bgh-admin-credential-"));
-
-  return path.join(directory, "admin-owner-credential.json");
+  return createTestDatabase();
 }
 
 test("stores a salted scrypt credential without the plaintext password", async () => {
-  const storePath = await createCredentialStorePath();
+  const database = await createCredentialStorePath();
   const replacement = await replaceAdminOwnerCredential(
     FIRST_OWNER_PASSWORD,
-    storePath,
+    database,
   );
-  const serializedCredential = await readFile(storePath, "utf8");
-  const storedCredential = JSON.parse(serializedCredential) as {
-    algorithm?: unknown;
-    hash?: unknown;
-    parameters?: unknown;
-    salt?: unknown;
-  };
+  const storedCredential = (
+    await database.query<{
+      algorithm: string;
+      password_hash: string;
+      salt: string;
+      scrypt_cost: number;
+    }>(`
+      SELECT algorithm, password_hash, salt, scrypt_cost
+      FROM admin_owner_credentials
+    `)
+  ).rows[0];
+  const serializedCredential = JSON.stringify(storedCredential);
 
   assert.equal(replacement.kind, "replaced");
   assert.doesNotMatch(serializedCredential, new RegExp(FIRST_OWNER_PASSWORD));
   assert.equal(storedCredential.algorithm, "scrypt");
-  assert.equal(typeof storedCredential.hash, "string");
+  assert.equal(typeof storedCredential.password_hash, "string");
   assert.equal(typeof storedCredential.salt, "string");
-  assert.equal(typeof storedCredential.parameters, "object");
+  assert.equal(storedCredential.scrypt_cost, 32768);
 
   assert.equal(
     (
       await authenticateAdminPassword(FIRST_OWNER_PASSWORD, {
         adminPassword: RECOVERY_PASSWORD,
         recoveryMode: undefined,
-        storePath,
+        database,
       })
     ).kind,
     "authenticated",
@@ -62,7 +67,7 @@ test("stores a salted scrypt credential without the plaintext password", async (
       await authenticateAdminPassword("synthetic-incorrect-password", {
         adminPassword: RECOVERY_PASSWORD,
         recoveryMode: undefined,
-        storePath,
+        database,
       })
     ).kind,
     "invalid",
@@ -70,16 +75,16 @@ test("stores a salted scrypt credential without the plaintext password", async (
 });
 
 test("replacement rotates salt and session version and invalidates old access", async () => {
-  const storePath = await createCredentialStorePath();
-  await replaceAdminOwnerCredential(FIRST_OWNER_PASSWORD, storePath);
+  const database = await createCredentialStorePath();
+  await replaceAdminOwnerCredential(FIRST_OWNER_PASSWORD, database);
 
-  const firstState = await readAdminOwnerCredential(storePath);
+  const firstState = await readAdminOwnerCredential(database);
   const firstAuthentication = await authenticateAdminPassword(
     FIRST_OWNER_PASSWORD,
     {
       adminPassword: RECOVERY_PASSWORD,
       recoveryMode: undefined,
-      storePath,
+      database,
     },
   );
 
@@ -98,9 +103,9 @@ test("replacement rotates salt and session version and invalidates old access", 
   );
   const replacement = await replaceAdminOwnerCredential(
     SECOND_OWNER_PASSWORD,
-    storePath,
+    database,
   );
-  const secondState = await readAdminOwnerCredential(storePath);
+  const secondState = await readAdminOwnerCredential(database);
 
   assert.equal(replacement.kind, "replaced");
   assert.equal(secondState.kind, "ready");
@@ -119,7 +124,7 @@ test("replacement rotates salt and session version and invalidates old access", 
       await authenticateAdminPassword(FIRST_OWNER_PASSWORD, {
         adminPassword: RECOVERY_PASSWORD,
         recoveryMode: undefined,
-        storePath,
+        database,
       })
     ).kind,
     "invalid",
@@ -130,13 +135,13 @@ test("replacement rotates salt and session version and invalidates old access", 
     {
       adminPassword: RECOVERY_PASSWORD,
       recoveryMode: undefined,
-      storePath,
+      database,
     },
   );
   const currentSession = await resolveAdminSessionCredential({
     adminPassword: RECOVERY_PASSWORD,
     recoveryMode: undefined,
-    storePath,
+    database,
   });
 
   assert.equal(newAuthentication.kind, "authenticated");
@@ -160,13 +165,13 @@ test("replacement rotates salt and session version and invalidates old access", 
 });
 
 test("missing credential state requires explicit bootstrap mode", async () => {
-  const storePath = await createCredentialStorePath();
+  const database = await createCredentialStorePath();
   const disabledAuthentication = await authenticateAdminPassword(
     RECOVERY_PASSWORD,
     {
       adminPassword: RECOVERY_PASSWORD,
       recoveryMode: undefined,
-      storePath,
+      database,
     },
   );
   const bootstrapAuthentication = await authenticateAdminPassword(
@@ -175,7 +180,7 @@ test("missing credential state requires explicit bootstrap mode", async () => {
       adminPassword: RECOVERY_PASSWORD,
       bootstrapMode: ADMIN_BOOTSTRAP_MODE_ENABLED_VALUE,
       recoveryMode: undefined,
-      storePath,
+      database,
     },
   );
 
@@ -191,7 +196,7 @@ test("missing credential state requires explicit bootstrap mode", async () => {
         adminPassword: RECOVERY_PASSWORD,
         bootstrapMode: ADMIN_BOOTSTRAP_MODE_ENABLED_VALUE,
         recoveryMode: undefined,
-        storePath,
+        database,
       })
     ).kind,
     "invalid",
@@ -202,7 +207,7 @@ test("missing credential state requires explicit bootstrap mode", async () => {
         adminPassword: "   ",
         bootstrapMode: ADMIN_BOOTSTRAP_MODE_ENABLED_VALUE,
         recoveryMode: undefined,
-        storePath,
+        database,
       })
     ).kind,
     "unavailable",
@@ -211,7 +216,7 @@ test("missing credential state requires explicit bootstrap mode", async () => {
     await resolveAdminSessionCredential({
       adminPassword: RECOVERY_PASSWORD,
       recoveryMode: undefined,
-      storePath,
+      database,
     }),
     null,
   );
@@ -222,7 +227,7 @@ test("missing credential state requires explicit bootstrap mode", async () => {
       adminPassword: RECOVERY_PASSWORD,
       bootstrapMode: ADMIN_BOOTSTRAP_MODE_ENABLED_VALUE,
       recoveryMode: ADMIN_RECOVERY_MODE_ENABLED_VALUE,
-      storePath,
+      database,
     },
   );
   assert.equal(recoveryAuthentication.kind, "authenticated");
@@ -233,8 +238,8 @@ test("missing credential state requires explicit bootstrap mode", async () => {
 });
 
 test("initialized state separates owner authentication from explicit recovery", async () => {
-  const storePath = await createCredentialStorePath();
-  await replaceAdminOwnerCredential(FIRST_OWNER_PASSWORD, storePath);
+  const database = await createCredentialStorePath();
+  await replaceAdminOwnerCredential(FIRST_OWNER_PASSWORD, database);
 
   const ownerAuthentication = await authenticateAdminPassword(
     FIRST_OWNER_PASSWORD,
@@ -242,21 +247,21 @@ test("initialized state separates owner authentication from explicit recovery", 
       adminPassword: RECOVERY_PASSWORD,
       bootstrapMode: ADMIN_BOOTSTRAP_MODE_ENABLED_VALUE,
       recoveryMode: undefined,
-      storePath,
+      database,
     },
   );
   const recoveryAsNormal = await authenticateAdminPassword(RECOVERY_PASSWORD, {
     adminPassword: RECOVERY_PASSWORD,
     bootstrapMode: ADMIN_BOOTSTRAP_MODE_ENABLED_VALUE,
     recoveryMode: undefined,
-    storePath,
+    database,
   });
   const recoveryAuthentication = await authenticateAdminPassword(
     RECOVERY_PASSWORD,
     {
       adminPassword: RECOVERY_PASSWORD,
       recoveryMode: ADMIN_RECOVERY_MODE_ENABLED_VALUE,
-      storePath,
+      database,
     },
   );
   const ownerDuringRecovery = await authenticateAdminPassword(
@@ -264,7 +269,7 @@ test("initialized state separates owner authentication from explicit recovery", 
     {
       adminPassword: RECOVERY_PASSWORD,
       recoveryMode: ADMIN_RECOVERY_MODE_ENABLED_VALUE,
-      storePath,
+      database,
     },
   );
 
@@ -284,12 +289,12 @@ test("initialized state separates owner authentication from explicit recovery", 
   const recoverySession = await resolveAdminSessionCredential({
     adminPassword: RECOVERY_PASSWORD,
     recoveryMode: ADMIN_RECOVERY_MODE_ENABLED_VALUE,
-    storePath,
+    database,
   });
   const disabledRecoverySession = await resolveAdminSessionCredential({
     adminPassword: RECOVERY_PASSWORD,
     recoveryMode: undefined,
-    storePath,
+    database,
   });
 
   assert.equal(
@@ -306,11 +311,37 @@ test("initialized state separates owner authentication from explicit recovery", 
 });
 
 test("malformed and unreadable credential state always fail closed", async () => {
-  const storePath = await createCredentialStorePath();
-  const malformedCredential = "{\"schemaVersion\":1,\"algorithm\":\"unknown\"}\n";
-  await writeFile(storePath, malformedCredential, "utf8");
+  const database = await createCredentialStorePath();
+  await database.query(`
+    INSERT INTO admin_owner_credentials (
+      singleton,
+      schema_version,
+      algorithm,
+      password_hash,
+      salt,
+      scrypt_cost,
+      scrypt_block_size,
+      scrypt_parallelization,
+      scrypt_key_length,
+      session_signing_key,
+      session_version
+    )
+    VALUES (
+      TRUE,
+      1,
+      'scrypt',
+      'invalid-hash',
+      'invalid-salt',
+      32768,
+      8,
+      3,
+      64,
+      'invalid-signing-key',
+      '00000000-0000-4000-8000-000000000000'
+    )
+  `);
 
-  assert.equal((await readAdminOwnerCredential(storePath)).kind, "unavailable");
+  assert.equal((await readAdminOwnerCredential(database)).kind, "unavailable");
   for (const modes of [
     { bootstrapMode: undefined, recoveryMode: undefined },
     {
@@ -327,20 +358,26 @@ test("malformed and unreadable credential state always fail closed", async () =>
         await authenticateAdminPassword(RECOVERY_PASSWORD, {
           adminPassword: RECOVERY_PASSWORD,
           ...modes,
-          storePath,
+          database,
         })
       ).kind,
       "unavailable",
     );
   }
   assert.equal(
-    (await replaceAdminOwnerCredential(FIRST_OWNER_PASSWORD, storePath)).kind,
+    (await replaceAdminOwnerCredential(FIRST_OWNER_PASSWORD, database)).kind,
     "unavailable",
   );
-  assert.equal(await readFile(storePath, "utf8"), malformedCredential);
+  assert.equal(
+    (
+      await database.query<{ password_hash: string }>(
+        "SELECT password_hash FROM admin_owner_credentials",
+      )
+    ).rows[0].password_hash,
+    "invalid-hash",
+  );
 
-  const unreadableStorePath = await createCredentialStorePath();
-  await mkdir(unreadableStorePath);
+  const unavailableDatabase = createUnavailableTestDatabase();
 
   for (const modes of [
     { bootstrapMode: undefined, recoveryMode: undefined },
@@ -358,7 +395,7 @@ test("malformed and unreadable credential state always fail closed", async () =>
         await authenticateAdminPassword(RECOVERY_PASSWORD, {
           adminPassword: RECOVERY_PASSWORD,
           ...modes,
-          storePath: unreadableStorePath,
+          database: unavailableDatabase,
         })
       ).kind,
       "unavailable",
@@ -367,22 +404,22 @@ test("malformed and unreadable credential state always fail closed", async () =>
 });
 
 test("failed atomic replacement preserves the existing valid credential", async () => {
-  const storePath = await createCredentialStorePath();
-  await replaceAdminOwnerCredential(FIRST_OWNER_PASSWORD, storePath);
-  const originalCredential = await readFile(storePath, "utf8");
-  await mkdir(`${storePath}.tmp`);
+  const database = await createCredentialStorePath();
+  await replaceAdminOwnerCredential(FIRST_OWNER_PASSWORD, database);
+  const originalCredential = await readAdminOwnerCredential(database);
+  const failingDatabase = failDatabaseMutations(database);
 
   assert.equal(
-    (await replaceAdminOwnerCredential(SECOND_OWNER_PASSWORD, storePath)).kind,
+    (await replaceAdminOwnerCredential(SECOND_OWNER_PASSWORD, failingDatabase)).kind,
     "persistence_failed",
   );
-  assert.equal(await readFile(storePath, "utf8"), originalCredential);
+  assert.deepEqual(await readAdminOwnerCredential(database), originalCredential);
   assert.equal(
     (
       await authenticateAdminPassword(FIRST_OWNER_PASSWORD, {
         adminPassword: RECOVERY_PASSWORD,
         recoveryMode: undefined,
-        storePath,
+        database,
       })
     ).kind,
     "authenticated",
@@ -392,7 +429,7 @@ test("failed atomic replacement preserves the existing valid credential", async 
       await authenticateAdminPassword(SECOND_OWNER_PASSWORD, {
         adminPassword: RECOVERY_PASSWORD,
         recoveryMode: undefined,
-        storePath,
+        database,
       })
     ).kind,
     "invalid",

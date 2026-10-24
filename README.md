@@ -42,29 +42,29 @@ Current MVP scope:
 What this does not do yet:
 - no confirmed booking flow
 - no live Stripe payments before explicit go-live approval
-- no database-backed persistence layer
 - no submission list or admin dashboard
 - no public account system
 
-## Operator Availability Persistence (Current MVP)
+## Durable Persistence
 
-Operator availability is stored in a local JSON file:
-- default path: `data/operator-availability.json`
-- override path: `BGH_AVAILABILITY_STORE_PATH`
+Owner credentials, operator availability, reservation/payment state, and
+homepage content are stored in PostgreSQL. `DATABASE_URL` must be a server-only
+pooled Neon connection for the current environment's runtime role. Production
+and Preview use isolated Neon branches and roles.
 
-This is intentionally MVP-local friendly:
-- simple to run locally
-- easy to inspect
-- low operational overhead for current scope
+Database migrations never run during application startup, build, or deployment.
+Run them explicitly with a direct connection owned by the separately authorized
+migration role:
 
-Known limits:
-- not ideal for read-only serverless filesystems
-- concurrent writes are last-write-wins
-- invalid/corrupt JSON fails loudly at read time
+```bash
+MIGRATION_DATABASE_URL='<migration-connection-string>' npm run db:migrate -- \
+  --target preview \
+  --runtime-role bgh_preview_app
+```
 
-Practical note:
-- this is acceptable for the current MVP phase
-- future growth may require moving availability persistence to a multi-writer-safe store, but that migration is out of scope for now
+Production additionally requires `--confirm-production`. The migration command
+rejects a runtime role that has schema `CREATE` privilege and grants only the
+application DML and sequence privileges required by the stores.
 
 ## Planned Direction
 
@@ -134,8 +134,8 @@ The app currently expects these variables in `.env.local`:
 - `BGH_ADMIN_BOOTSTRAP_MODE`
   Set to `enabled` only for first-time owner password setup, then disable or
   remove it after initialization.
-- `BGH_ADMIN_CREDENTIAL_STORE_PATH`
-  Optional durable path override for the server-only owner credential state.
+- `DATABASE_URL`
+  Server-only pooled Neon connection for the environment-specific runtime role.
 - `STRIPE_SECRET_KEY`
   Server-only Stripe test secret key for local development.
 - `STRIPE_CHECKOUT_PRICE_ID`
@@ -158,13 +158,11 @@ After initialization, normal Admin login uses only the stored owner password
 hash. Bootstrap mode is ignored even if it remains temporarily enabled, and
 `ADMIN_PASSWORD` remains rejected unless recovery mode is explicitly enabled.
 
-The owner credential defaults to `data/admin-owner-credential.json` and can be
-relocated with `BGH_ADMIN_CREDENTIAL_STORE_PATH`. The file contains a salted
-scrypt hash and session-generation material, never the plaintext password. It
-must be kept in durable server-only storage. Missing state permits bootstrap
-only during explicit bootstrap mode; malformed or unreadable state always
-fails closed and is not overwritten. Disable or remove bootstrap mode after
-successful initialization.
+The owner credential is stored in PostgreSQL as a salted scrypt hash and
+session-generation material, never the plaintext password. Missing state
+permits bootstrap only during explicit bootstrap mode; malformed or unreadable
+state always fails closed and is not overwritten. Disable or remove bootstrap
+mode after successful initialization.
 
 Authenticated owners can use **Change password** from the private Admin area.
 The action verifies the current owner password, rotates the stored credential

@@ -1,8 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import path from "node:path";
+import { setDatabaseForTests } from "../../../lib/server/database";
+import { createUnavailableTestDatabase } from "../../../lib/test-support/postgres-test-database";
 import { POST } from "./route";
 
 function createAvailabilityRequest(body: unknown) {
@@ -42,12 +41,7 @@ test("invalid calendar date updates return a safe recovery message", async () =>
 });
 
 test("availability persistence failures return a safe recovery message", async () => {
-  const previousStorePath = process.env.BGH_AVAILABILITY_STORE_PATH;
-  const directory = await mkdtemp(path.join(tmpdir(), "bgh-availability-fail-"));
-  const unwritableStorePath = path.join(directory, "availability-directory");
-
-  await mkdir(unwritableStorePath);
-  process.env.BGH_AVAILABILITY_STORE_PATH = unwritableStorePath;
+  setDatabaseForTests(createUnavailableTestDatabase());
 
   try {
     const response = await POST(
@@ -64,10 +58,6 @@ test("availability persistence failures return a safe recovery message", async (
       "Availability could not be saved. No availability changes were saved.",
     );
   } finally {
-    if (previousStorePath === undefined) {
-      delete process.env.BGH_AVAILABILITY_STORE_PATH;
-    } else {
-      process.env.BGH_AVAILABILITY_STORE_PATH = previousStorePath;
-    }
+    setDatabaseForTests(null);
   }
 });
