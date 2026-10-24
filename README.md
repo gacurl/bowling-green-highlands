@@ -63,8 +63,27 @@ MIGRATION_DATABASE_URL='<migration-connection-string>' npm run db:migrate -- \
 ```
 
 Production additionally requires `--confirm-production`. The migration command
-rejects a runtime role that has schema `CREATE` privilege and grants only the
-application DML and sequence privileges required by the stores.
+requires target-specific `BGH_PREVIEW_NEON_PROJECT_ID` and
+`BGH_PREVIEW_NEON_BRANCH_ID` values (or their `BGH_PRODUCTION_*` equivalents).
+It verifies that the database has matching database-wide settings before any
+schema write:
+
+```sql
+ALTER DATABASE "<preview-database>" SET bgh.migration_target TO 'preview';
+ALTER DATABASE "<preview-database>" SET bgh.neon_project_id TO '<project-id>';
+ALTER DATABASE "<preview-database>" SET bgh.neon_branch_id TO '<branch-id>';
+```
+
+Provision the Production database with its own values and a `production` target.
+Reverify and reprovision these settings after cloning or resetting a branch.
+They are operator attestations, not Neon control-plane proof; a privileged
+administrator can change them. Provider identity confirmation remains separate.
+
+Preview requires the runtime role `bgh_preview_app`. For both targets, the
+migration role must be distinct from the runtime role. The runtime role must not
+be able to assume the migration role, have elevated role attributes, or have
+database/schema `CREATE`. The command preserves the least-privilege table and
+sequence grants required by the application stores.
 
 ## Planned Direction
 

@@ -28,9 +28,28 @@ const EXPECTED_TABLE_PRIVILEGES = {
 };
 const SEQUENCE_PRIVILEGES = ["USAGE", "SELECT", "UPDATE"];
 const RESERVATION_SEQUENCE = "reservation_requests_sequence_id_seq";
+const PREVIEW_RUNTIME_ROLE = "bgh_preview_app";
+const TEST_NEON_PROJECT_ID = "bgh-test-project";
+const TEST_PREVIEW_BRANCH_ID = "br-preview-test";
+const TEST_PRODUCTION_BRANCH_ID = "br-production-test";
 
 function applyMigrations(options) {
-  return applyMigrationsAtTarget({ target: "preview", ...options });
+  return applyMigrationsAtTarget({
+    expectedNeonBranchId: TEST_PREVIEW_BRANCH_ID,
+    expectedNeonProjectId: TEST_NEON_PROJECT_ID,
+    target: "preview",
+    ...options,
+  });
+}
+
+function applyProductionMigrations(options) {
+  return applyMigrationsAtTarget({
+    confirmProduction: true,
+    expectedNeonBranchId: TEST_PRODUCTION_BRANCH_ID,
+    expectedNeonProjectId: TEST_NEON_PROJECT_ID,
+    target: "production",
+    ...options,
+  });
 }
 
 function getTestDatabaseUrl() {
@@ -43,11 +62,17 @@ function getTestDatabaseUrl() {
   return databaseUrl;
 }
 
-async function createMigrationEnvironment({ marker = "preview" } = {}) {
+async function createMigrationEnvironment({
+  branchMarker = TEST_PREVIEW_BRANCH_ID,
+  marker = "preview",
+  projectMarker = TEST_NEON_PROJECT_ID,
+  target = "preview",
+} = {}) {
   const suffix = randomUUID().replaceAll("-", "");
   const databaseName = `bgh_migration_${suffix}`;
   const inheritedRole = `bgh_inherited_${suffix}`;
-  const runtimeRole = `bgh_runtime_${suffix}`;
+  const runtimeRole =
+    target === "preview" ? PREVIEW_RUNTIME_ROLE : `bgh_runtime_${suffix}`;
   const adminPool = new Pool({ connectionString: getTestDatabaseUrl() });
 
   await adminPool.query(`CREATE ROLE "${inheritedRole}" NOLOGIN`);
@@ -55,14 +80,20 @@ async function createMigrationEnvironment({ marker = "preview" } = {}) {
   await adminPool.query(`GRANT "${inheritedRole}" TO "${runtimeRole}"`);
   await adminPool.query(`CREATE DATABASE "${databaseName}"`);
 
-  if (marker !== null) {
-    if (!/^[a-z]+$/.test(marker)) {
-      throw new Error("Invalid synthetic migration target marker");
-    }
+  for (const [setting, value] of [
+    ["bgh.migration_target", marker],
+    ["bgh.neon_project_id", projectMarker],
+    ["bgh.neon_branch_id", branchMarker],
+  ]) {
+    if (value !== null) {
+      if (!/^[A-Za-z0-9-]+$/.test(value)) {
+        throw new Error("Invalid synthetic database identity marker");
+      }
 
-    await adminPool.query(
-      `ALTER DATABASE "${databaseName}" SET bgh.migration_target TO '${marker}'`,
-    );
+      await adminPool.query(
+        `ALTER DATABASE "${databaseName}" SET ${setting} TO '${value}'`,
+      );
+    }
   }
 
   const databaseUrl = new URL(getTestDatabaseUrl());
@@ -192,6 +223,47 @@ test("migration execution requires an explicit valid target", async () => {
   );
 });
 
+test("migration execution requires explicit valid expected Neon IDs", async () => {
+  const pool = {
+    async connect() {
+      assert.fail("invalid expected IDs must fail before connecting");
+    },
+  };
+  const cases = [
+    { expectedNeonProjectId: undefined },
+    { expectedNeonProjectId: "INVALID" },
+    { expectedNeonBranchId: undefined },
+    { expectedNeonBranchId: "preview" },
+  ];
+
+  for (const overrides of cases) {
+    await assert.rejects(
+      applyMigrationsAtTarget({
+        expectedNeonBranchId: TEST_PREVIEW_BRANCH_ID,
+        expectedNeonProjectId: TEST_NEON_PROJECT_ID,
+        pool,
+        runtimeRole: PREVIEW_RUNTIME_ROLE,
+        target: "preview",
+        ...overrides,
+      }),
+      /Expected Neon (project|branch) ID is required and must be valid/,
+    );
+  }
+});
+
+test("Preview migrations require the fixed Preview runtime role", async () => {
+  const pool = {
+    async connect() {
+      assert.fail("an invalid Preview runtime role must fail before connecting");
+    },
+  };
+
+  await assert.rejects(
+    applyMigrations({ pool, runtimeRole: "another_runtime_role" }),
+    /Preview migrations require runtime role bgh_preview_app/,
+  );
+});
+
 test("missing and malformed database target markers fail before writes", async () => {
   for (const [marker, expectedError] of [
     [null, /marker is missing/],
@@ -214,27 +286,85 @@ test("missing and malformed database target markers fail before writes", async (
   }
 });
 
-test("ambiguous database target markers fail before writes", async () => {
-  const markerResult = createMarkerResultPool([
-    { target: "preview" },
-    { target: "production" },
-  ]);
+test("ambiguous database identity markers fail before writes", async () => {
+  const baseRows = [
+    { name: "bgh.migration_target", value: "preview" },
+    { name: "bgh.neon_project_id", value: TEST_NEON_PROJECT_ID },
+    { name: "bgh.neon_branch_id", value: TEST_PREVIEW_BRANCH_ID },
+  ];
 
-  await assert.rejects(
-    applyMigrations({
-      pool: markerResult.pool,
-      runtimeRole: "bgh_runtime",
-    }),
-    /marker is ambiguous/,
-  );
-  assert.equal(
-    markerResult.queries.some((query) => query.includes("CREATE TABLE")),
-    false,
-  );
+  for (const duplicate of [
+    { name: "bgh.migration_target", value: "production" },
+    { name: "bgh.neon_project_id", value: "another-project" },
+    { name: "bgh.neon_branch_id", value: "br-another-branch" },
+  ]) {
+    const markerResult = createMarkerResultPool([...baseRows, duplicate]);
+
+    await assert.rejects(
+      applyMigrations({
+        pool: markerResult.pool,
+        runtimeRole: PREVIEW_RUNTIME_ROLE,
+      }),
+      /identity marker is ambiguous/,
+    );
+    assert.equal(
+      markerResult.queries.some((query) => query.includes("CREATE TABLE")),
+      false,
+    );
+  }
+});
+
+test("Neon identity markers are required, valid, and target-specific", async () => {
+  const cases = [
+    {
+      options: { projectMarker: null },
+      expectedError: /marker is missing: bgh.neon_project_id/,
+    },
+    {
+      options: { branchMarker: null },
+      expectedError: /marker is missing: bgh.neon_branch_id/,
+    },
+    {
+      options: { projectMarker: "INVALID" },
+      expectedError: /project ID marker is malformed/,
+    },
+    {
+      options: { branchMarker: "preview" },
+      expectedError: /branch ID marker is malformed/,
+    },
+    {
+      options: { projectMarker: "copied-production-project" },
+      expectedError: /project ID does not match/,
+    },
+    {
+      options: { branchMarker: TEST_PRODUCTION_BRANCH_ID },
+      expectedError: /branch ID does not match/,
+    },
+  ];
+
+  for (const { expectedError, options } of cases) {
+    const environment = await createMigrationEnvironment(options);
+
+    try {
+      await assert.rejects(
+        applyMigrations({
+          pool: environment.pool,
+          runtimeRole: environment.runtimeRole,
+        }),
+        expectedError,
+      );
+      await assertNoMigrationState(environment.pool);
+    } finally {
+      await environment.cleanup();
+    }
+  }
 });
 
 test("database target mismatch and unconfirmed Production fail before writes", async () => {
-  const environment = await createMigrationEnvironment({ marker: "production" });
+  const environment = await createMigrationEnvironment({
+    branchMarker: TEST_PRODUCTION_BRANCH_ID,
+    marker: "production",
+  });
 
   try {
     await assert.rejects(
@@ -248,6 +378,8 @@ test("database target mismatch and unconfirmed Production fail before writes", a
 
     await assert.rejects(
       applyMigrationsAtTarget({
+        expectedNeonBranchId: TEST_PRODUCTION_BRANCH_ID,
+        expectedNeonProjectId: TEST_NEON_PROJECT_ID,
         pool: environment.pool,
         runtimeRole: environment.runtimeRole,
         target: "production",
@@ -274,7 +406,17 @@ test("database-scoped target ignores session and role spoofing", async (t) => {
     `ALTER ROLE ${identifiers.rows[0].role} IN DATABASE ${identifiers.rows[0].database} ` +
       "SET bgh.migration_target TO 'production'",
   );
+  await client.query(
+    `ALTER ROLE ${identifiers.rows[0].role} IN DATABASE ${identifiers.rows[0].database} ` +
+      "SET bgh.neon_project_id TO 'spoofed-project'",
+  );
+  await client.query(
+    `ALTER ROLE ${identifiers.rows[0].role} IN DATABASE ${identifiers.rows[0].database} ` +
+      "SET bgh.neon_branch_id TO 'br-spoofed-branch'",
+  );
   await client.query("SET bgh.migration_target TO 'production'");
+  await client.query("SET bgh.neon_project_id TO 'spoofed-project'");
+  await client.query("SET bgh.neon_branch_id TO 'br-spoofed-branch'");
   await applyMigrations({
     pool: {
       async connect() {
@@ -295,14 +437,16 @@ test("database-scoped target ignores session and role spoofing", async (t) => {
 });
 
 test("confirmed Production target applies migrations", async (t) => {
-  const environment = await createMigrationEnvironment({ marker: "production" });
+  const environment = await createMigrationEnvironment({
+    branchMarker: TEST_PRODUCTION_BRANCH_ID,
+    marker: "production",
+    target: "production",
+  });
   t.after(environment.cleanup);
 
-  const result = await applyMigrationsAtTarget({
-    confirmProduction: true,
+  const result = await applyProductionMigrations({
     pool: environment.pool,
     runtimeRole: environment.runtimeRole,
-    target: "production",
   });
 
   assert.deepEqual(result, ["0001_durable_persistence.sql"]);
@@ -310,6 +454,127 @@ test("confirmed Production target applies migrations", async (t) => {
     environment.pool,
     environment.runtimeRole,
   );
+});
+
+test("migration and runtime roles must be distinct", async (t) => {
+  const environment = await createMigrationEnvironment({
+    branchMarker: TEST_PRODUCTION_BRANCH_ID,
+    marker: "production",
+    target: "production",
+  });
+  t.after(environment.cleanup);
+  const identity = await environment.pool.query(
+    "SELECT current_user::text AS migration_role",
+  );
+
+  await assert.rejects(
+    applyProductionMigrations({
+      pool: environment.pool,
+      runtimeRole: identity.rows[0].migration_role,
+    }),
+    /Migration and runtime database roles must be distinct/,
+  );
+  await assertNoMigrationState(environment.pool);
+});
+
+test("runtime SET ROLE access to the migration role fails before writes", async (t) => {
+  const environment = await createMigrationEnvironment();
+  t.after(environment.cleanup);
+  const identity = await environment.pool.query(
+    "SELECT quote_ident(current_user) AS migration_role",
+  );
+
+  await environment.pool.query(
+    `GRANT ${identity.rows[0].migration_role} TO "${PREVIEW_RUNTIME_ROLE}"`,
+  );
+  await assert.rejects(
+    applyMigrations({
+      pool: environment.pool,
+      runtimeRole: environment.runtimeRole,
+    }),
+    /must not access the migration role/,
+  );
+  await assertNoMigrationState(environment.pool);
+});
+
+test("elevated runtime role attributes fail before writes", async (t) => {
+  const environment = await createMigrationEnvironment();
+  t.after(environment.cleanup);
+
+  for (const [elevatedAttribute, resetAttribute] of [
+    ["SUPERUSER", "NOSUPERUSER"],
+    ["CREATEROLE", "NOCREATEROLE"],
+    ["CREATEDB", "NOCREATEDB"],
+    ["REPLICATION", "NOREPLICATION"],
+    ["BYPASSRLS", "NOBYPASSRLS"],
+  ]) {
+    await environment.pool.query(
+      `ALTER ROLE "${PREVIEW_RUNTIME_ROLE}" ${elevatedAttribute}`,
+    );
+
+    try {
+      await assert.rejects(
+        applyMigrations({
+          pool: environment.pool,
+          runtimeRole: environment.runtimeRole,
+        }),
+        /has elevated role attributes/,
+      );
+      await assertNoMigrationState(environment.pool);
+    } finally {
+      await environment.pool.query(
+        `ALTER ROLE "${PREVIEW_RUNTIME_ROLE}" ${resetAttribute}`,
+      );
+    }
+  }
+});
+
+test("runtime database and schema CREATE fail before writes", async (t) => {
+  const environment = await createMigrationEnvironment();
+  t.after(environment.cleanup);
+
+  await environment.pool.query(
+    `GRANT CREATE ON DATABASE "${environment.databaseName}" TO "${PREVIEW_RUNTIME_ROLE}"`,
+  );
+  await assert.rejects(
+    applyMigrations({
+      pool: environment.pool,
+      runtimeRole: environment.runtimeRole,
+    }),
+    /must not create database objects/,
+  );
+  await assertNoMigrationState(environment.pool);
+  await environment.pool.query(
+    `REVOKE CREATE ON DATABASE "${environment.databaseName}" FROM "${PREVIEW_RUNTIME_ROLE}"`,
+  );
+
+  await environment.pool.query(
+    `GRANT CREATE ON SCHEMA public TO "${PREVIEW_RUNTIME_ROLE}"`,
+  );
+  await assert.rejects(
+    applyMigrations({
+      pool: environment.pool,
+      runtimeRole: environment.runtimeRole,
+    }),
+    /must not have schema CREATE privilege/,
+  );
+  await assertNoMigrationState(environment.pool);
+  await environment.pool.query(
+    `REVOKE CREATE ON SCHEMA public FROM "${PREVIEW_RUNTIME_ROLE}"`,
+  );
+
+  await environment.pool.query("CREATE SCHEMA runtime_create_test");
+  await environment.pool.query(
+    `GRANT CREATE ON SCHEMA runtime_create_test TO "${PREVIEW_RUNTIME_ROLE}"`,
+  );
+  await assert.rejects(
+    applyMigrations({
+      pool: environment.pool,
+      runtimeRole: environment.runtimeRole,
+    }),
+    /must not have schema CREATE privilege/,
+  );
+  await assertNoMigrationState(environment.pool);
 });
 
 test("migrations are repeatable, serialized, and grant only runtime DML", async (t) => {

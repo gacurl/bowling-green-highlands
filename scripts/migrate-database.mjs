@@ -15,6 +15,20 @@ if (target !== "preview" && target !== "production") {
   throw new Error("Use --target preview or --target production");
 }
 
+const targetEnvironmentName = target.toUpperCase();
+const expectedNeonProjectId =
+  process.env[`BGH_${targetEnvironmentName}_NEON_PROJECT_ID`]?.trim();
+const expectedNeonBranchId =
+  process.env[`BGH_${targetEnvironmentName}_NEON_BRANCH_ID`]?.trim();
+
+if (!expectedNeonProjectId) {
+  throw new Error(`BGH_${targetEnvironmentName}_NEON_PROJECT_ID is required`);
+}
+
+if (!expectedNeonBranchId) {
+  throw new Error(`BGH_${targetEnvironmentName}_NEON_BRANCH_ID is required`);
+}
+
 if (!runtimeRole) {
   throw new Error("Use --runtime-role with the environment's runtime role");
 }
@@ -41,6 +55,8 @@ const pool = new Pool({
 try {
   const appliedMigrations = await applyMigrations({
     confirmProduction: confirmsProduction,
+    expectedNeonBranchId,
+    expectedNeonProjectId,
     pool,
     runtimeRole,
     target,
