@@ -4,15 +4,15 @@ import {
   scrypt,
   timingSafeEqual,
 } from "node:crypto";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import path from "node:path";
+import {
+  getDatabase,
+  type DatabaseAccess,
+} from "../../lib/server/database";
 import {
   isAdminPasswordConfigured,
   type AdminSessionCredential,
 } from "./admin-session";
 
-export const ADMIN_CREDENTIAL_STORE_PATH_ENV_NAME =
-  "BGH_ADMIN_CREDENTIAL_STORE_PATH";
 export const ADMIN_BOOTSTRAP_MODE_ENV_NAME = "BGH_ADMIN_BOOTSTRAP_MODE";
 export const ADMIN_BOOTSTRAP_MODE_ENABLED_VALUE = "enabled";
 export const ADMIN_RECOVERY_MODE_ENV_NAME = "BGH_ADMIN_RECOVERY_MODE";
@@ -45,6 +45,19 @@ type StoredAdminOwnerCredential = {
   };
 };
 
+type StoredAdminOwnerCredentialRow = {
+  algorithm: unknown;
+  password_hash: unknown;
+  salt: unknown;
+  schema_version: unknown;
+  scrypt_block_size: unknown;
+  scrypt_cost: unknown;
+  scrypt_key_length: unknown;
+  scrypt_parallelization: unknown;
+  session_signing_key: unknown;
+  session_version: unknown;
+};
+
 export type AdminOwnerCredentialReadResult =
   | { kind: "missing" }
   | { credential: StoredAdminOwnerCredential; kind: "ready" }
@@ -53,8 +66,8 @@ export type AdminOwnerCredentialReadResult =
 type AdminAuthenticationOptions = {
   adminPassword: string | undefined;
   bootstrapMode?: string;
+  database?: DatabaseAccess;
   recoveryMode: string | undefined;
-  storePath?: string;
 };
 
 export type AdminAuthenticationResult =
@@ -75,17 +88,6 @@ export type InitializeAdminOwnerCredentialResult =
   | { kind: "persistence_failed" }
   | { kind: "unavailable" };
 
-function getAdminOwnerCredentialStorePath() {
-  return (
-    process.env[ADMIN_CREDENTIAL_STORE_PATH_ENV_NAME] ??
-    path.join(process.cwd(), "data", "admin-owner-credential.json")
-  );
-}
-
-function hasErrorCode(error: unknown, code: string) {
-  return error instanceof Error && "code" in error && error.code === code;
-}
-
 function decodeBase64(value: unknown, expectedLength: number) {
   if (typeof value !== "string") {
     return null;
@@ -104,60 +106,38 @@ function decodeBase64(value: unknown, expectedLength: number) {
 }
 
 function normalizeStoredAdminOwnerCredential(
-  value: unknown,
+  row: StoredAdminOwnerCredentialRow,
 ): StoredAdminOwnerCredential | null {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return null;
-  }
-
-  const record = value as Record<string, unknown>;
-  const parameters = record.parameters;
-  const session = record.session;
-
   if (
-    record.schemaVersion !== 1 ||
-    record.algorithm !== "scrypt" ||
-    !parameters ||
-    typeof parameters !== "object" ||
-    Array.isArray(parameters) ||
-    !session ||
-    typeof session !== "object" ||
-    Array.isArray(session)
-  ) {
-    return null;
-  }
-
-  const parameterRecord = parameters as Record<string, unknown>;
-  const sessionRecord = session as Record<string, unknown>;
-
-  if (
-    parameterRecord.cost !== SCRYPT_COST ||
-    parameterRecord.blockSize !== SCRYPT_BLOCK_SIZE ||
-    parameterRecord.parallelization !== SCRYPT_PARALLELIZATION ||
-    parameterRecord.keyLength !== SCRYPT_KEY_LENGTH ||
-    !decodeBase64(record.salt, PASSWORD_SALT_BYTES) ||
-    !decodeBase64(record.hash, SCRYPT_KEY_LENGTH) ||
-    !decodeBase64(sessionRecord.signingKey, SESSION_SIGNING_KEY_BYTES) ||
-    typeof sessionRecord.version !== "string" ||
-    !SESSION_VERSION_PATTERN.test(sessionRecord.version)
+    row.schema_version !== 1 ||
+    row.algorithm !== "scrypt" ||
+    row.scrypt_cost !== SCRYPT_COST ||
+    row.scrypt_block_size !== SCRYPT_BLOCK_SIZE ||
+    row.scrypt_parallelization !== SCRYPT_PARALLELIZATION ||
+    row.scrypt_key_length !== SCRYPT_KEY_LENGTH ||
+    !decodeBase64(row.salt, PASSWORD_SALT_BYTES) ||
+    !decodeBase64(row.password_hash, SCRYPT_KEY_LENGTH) ||
+    !decodeBase64(row.session_signing_key, SESSION_SIGNING_KEY_BYTES) ||
+    typeof row.session_version !== "string" ||
+    !SESSION_VERSION_PATTERN.test(row.session_version)
   ) {
     return null;
   }
 
   return {
     algorithm: "scrypt",
-    hash: record.hash as string,
+    hash: row.password_hash as string,
     parameters: {
       blockSize: SCRYPT_BLOCK_SIZE,
       cost: SCRYPT_COST,
       keyLength: SCRYPT_KEY_LENGTH,
       parallelization: SCRYPT_PARALLELIZATION,
     },
-    salt: record.salt as string,
+    salt: row.salt as string,
     schemaVersion: 1,
     session: {
-      signingKey: sessionRecord.signingKey as string,
-      version: sessionRecord.version,
+      signingKey: row.session_signing_key as string,
+      version: row.session_version,
     },
   };
 }
@@ -250,36 +230,48 @@ async function createStoredAdminOwnerCredential(
   };
 }
 
-async function writeAdminOwnerCredential(
-  credential: StoredAdminOwnerCredential,
-  storePath: string,
-) {
-  const directory = path.dirname(storePath);
-  const temporaryPath = `${storePath}.tmp`;
-  const serializedCredential = `${JSON.stringify(credential, null, 2)}\n`;
-
-  await mkdir(directory, { recursive: true });
-  await writeFile(temporaryPath, serializedCredential, {
-    encoding: "utf8",
-    mode: 0o600,
-  });
-  await rename(temporaryPath, storePath);
+function toCredentialValues(credential: StoredAdminOwnerCredential) {
+  return [
+    credential.schemaVersion,
+    credential.algorithm,
+    credential.hash,
+    credential.salt,
+    credential.parameters.cost,
+    credential.parameters.blockSize,
+    credential.parameters.parallelization,
+    credential.parameters.keyLength,
+    credential.session.signingKey,
+    credential.session.version,
+  ];
 }
 
 export async function readAdminOwnerCredential(
-  storePath = getAdminOwnerCredentialStorePath(),
+  database?: DatabaseAccess,
 ): Promise<AdminOwnerCredentialReadResult> {
   try {
-    const fileContents = await readFile(storePath, "utf8");
-    const parsedCredential = JSON.parse(fileContents);
-    const credential = normalizeStoredAdminOwnerCredential(parsedCredential);
+    const result = await getDatabase(database).query<StoredAdminOwnerCredentialRow>(`
+      SELECT
+        schema_version,
+        algorithm,
+        password_hash,
+        salt,
+        scrypt_cost,
+        scrypt_block_size,
+        scrypt_parallelization,
+        scrypt_key_length,
+        session_signing_key,
+        session_version::text AS session_version
+      FROM admin_owner_credentials
+      WHERE singleton = TRUE
+    `);
 
-    return credential ? { credential, kind: "ready" } : { kind: "unavailable" };
-  } catch (error) {
-    if (hasErrorCode(error, "ENOENT")) {
+    if (result.rows.length === 0) {
       return { kind: "missing" };
     }
 
+    const credential = normalizeStoredAdminOwnerCredential(result.rows[0]);
+    return credential ? { credential, kind: "ready" } : { kind: "unavailable" };
+  } catch {
     return { kind: "unavailable" };
   }
 }
@@ -303,14 +295,14 @@ export async function verifyAdminOwnerPassword(
 
 export async function replaceAdminOwnerCredential(
   password: string,
-  storePath = getAdminOwnerCredentialStorePath(),
+  database?: DatabaseAccess,
   expectedSessionVersion?: string | null,
 ): Promise<ReplaceAdminOwnerCredentialResult> {
   if (!isAdminPasswordConfigured(password)) {
     return { kind: "invalid_password" };
   }
 
-  const existingCredential = await readAdminOwnerCredential(storePath);
+  const existingCredential = await readAdminOwnerCredential(database);
 
   if (existingCredential.kind === "unavailable") {
     return { kind: "unavailable" };
@@ -331,7 +323,56 @@ export async function replaceAdminOwnerCredential(
 
   try {
     const credential = await createStoredAdminOwnerCredential(password);
-    await writeAdminOwnerCredential(credential, storePath);
+    const values = toCredentialValues(credential);
+    const result =
+      existingCredential.kind === "missing"
+        ? await getDatabase(database).query(
+            `
+              INSERT INTO admin_owner_credentials (
+                singleton,
+                schema_version,
+                algorithm,
+                password_hash,
+                salt,
+                scrypt_cost,
+                scrypt_block_size,
+                scrypt_parallelization,
+                scrypt_key_length,
+                session_signing_key,
+                session_version
+              )
+              VALUES (TRUE, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+              ON CONFLICT (singleton) DO NOTHING
+            `,
+            values,
+          )
+        : await getDatabase(database).query(
+            `
+              UPDATE admin_owner_credentials
+              SET schema_version = $1,
+                  algorithm = $2,
+                  password_hash = $3,
+                  salt = $4,
+                  scrypt_cost = $5,
+                  scrypt_block_size = $6,
+                  scrypt_parallelization = $7,
+                  scrypt_key_length = $8,
+                  session_signing_key = $9,
+                  session_version = $10,
+                  updated_at = CURRENT_TIMESTAMP
+              WHERE singleton = TRUE
+                AND session_version = $11::uuid
+            `,
+            [
+              ...values,
+              expectedSessionVersion ??
+                existingCredential.credential.session.version,
+            ],
+          );
+
+    if (result.rowCount !== 1) {
+      return { kind: "unavailable" };
+    }
 
     return {
       kind: "replaced",
@@ -344,13 +385,13 @@ export async function replaceAdminOwnerCredential(
 
 export async function initializeAdminOwnerCredential(
   password: string,
-  storePath = getAdminOwnerCredentialStorePath(),
+  database?: DatabaseAccess,
 ): Promise<InitializeAdminOwnerCredentialResult> {
   if (!isAdminPasswordConfigured(password)) {
     return { kind: "invalid_password" };
   }
 
-  const existingCredential = await readAdminOwnerCredential(storePath);
+  const existingCredential = await readAdminOwnerCredential(database);
 
   if (existingCredential.kind === "unavailable") {
     return { kind: "unavailable" };
@@ -362,12 +403,30 @@ export async function initializeAdminOwnerCredential(
 
   try {
     const credential = await createStoredAdminOwnerCredential(password);
-    await writeAdminOwnerCredential(credential, storePath);
+    const result = await getDatabase(database).query(
+      `
+        INSERT INTO admin_owner_credentials (
+          singleton,
+          schema_version,
+          algorithm,
+          password_hash,
+          salt,
+          scrypt_cost,
+          scrypt_block_size,
+          scrypt_parallelization,
+          scrypt_key_length,
+          session_signing_key,
+          session_version
+        )
+        VALUES (TRUE, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        ON CONFLICT (singleton) DO NOTHING
+      `,
+      toCredentialValues(credential),
+    );
 
-    return {
-      kind: "initialized",
-      sessionVersion: credential.session.version,
-    };
+    return result.rowCount === 1
+      ? { kind: "initialized", sessionVersion: credential.session.version }
+      : { kind: "already_initialized" };
   } catch {
     return { kind: "persistence_failed" };
   }
@@ -378,11 +437,11 @@ export async function authenticateAdminPassword(
   {
     adminPassword,
     bootstrapMode,
+    database,
     recoveryMode,
-    storePath = getAdminOwnerCredentialStorePath(),
   }: AdminAuthenticationOptions,
 ): Promise<AdminAuthenticationResult> {
-  const credentialState = await readAdminOwnerCredential(storePath);
+  const credentialState = await readAdminOwnerCredential(database);
 
   if (credentialState.kind === "unavailable") {
     return { kind: "unavailable" };
@@ -438,10 +497,10 @@ export async function authenticateAdminPassword(
 export async function resolveAdminSessionCredential({
   adminPassword,
   bootstrapMode,
+  database,
   recoveryMode,
-  storePath = getAdminOwnerCredentialStorePath(),
 }: AdminAuthenticationOptions): Promise<AdminSessionCredential | null> {
-  const credentialState = await readAdminOwnerCredential(storePath);
+  const credentialState = await readAdminOwnerCredential(database);
 
   if (credentialState.kind === "unavailable") {
     return null;

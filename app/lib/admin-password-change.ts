@@ -4,6 +4,7 @@ import {
   resolveAdminSessionCredential,
 } from "./admin-credential-store";
 import { isValidAdminSessionCookieValue } from "./admin-session";
+import type { DatabaseAccess } from "../../lib/server/database";
 
 export type AdminPasswordChangeResult =
   | "changed"
@@ -25,8 +26,8 @@ type AdminPasswordChangeInput = {
 type AdminPasswordChangeOptions = {
   adminPassword: string | undefined;
   bootstrapMode?: string;
+  database?: DatabaseAccess;
   recoveryMode: string | undefined;
-  storePath?: string;
 };
 
 export type AdminPasswordChangeOutcome = {
@@ -96,7 +97,7 @@ export async function changeAdminOwnerPassword(
 
   const replacement = await replaceAdminOwnerCredential(
     input.newPassword,
-    options.storePath,
+    options.database,
     sessionCredential.sessionVersion,
   );
 

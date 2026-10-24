@@ -1,10 +1,16 @@
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import path from "node:path";
+import {
+  getDatabase,
+  type DatabaseAccess,
+} from "../server/database";
 import {
   defaultHomepageContent,
   type HomepageFaqItem,
   type HomepageContent,
 } from "./homepage-content";
+
+type HomepageContentRow = {
+  content: unknown;
+};
 
 type HomepageContentStoreFile = {
   eyebrow?: unknown;
@@ -31,16 +37,7 @@ export type HomepageContentValidationError =
   | "invalid_policy_title"
   | "invalid_policy_text";
 
-function getHomepageContentStorePath() {
-  return (
-    process.env.BGH_HOMEPAGE_CONTENT_STORE_PATH ??
-    path.join(process.cwd(), "data", "homepage-content.json")
-  );
-}
-
-function normalizeHomepageContent(
-  value: unknown,
-): HomepageContent | null {
+function normalizeHomepageContent(value: unknown): HomepageContent | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return null;
   }
@@ -124,85 +121,41 @@ function requireMinLength(value: string, minimumLength: number) {
 export function validateHomepageContent(
   content: HomepageContent,
 ): HomepageContentValidationError | null {
-  if (!requireNonEmpty(content.eyebrow)) {
-    return "invalid_eyebrow";
-  }
-
-  if (!requireNonEmpty(content.headline)) {
-    return "invalid_headline";
-  }
-
-  if (!requireMinLength(content.headline, 3)) {
-    return "invalid_headline";
-  }
-
-  if (!requireNonEmpty(content.supportingText)) {
-    return "invalid_supporting_text";
-  }
-
+  if (!requireNonEmpty(content.eyebrow)) return "invalid_eyebrow";
+  if (!requireMinLength(content.headline, 3)) return "invalid_headline";
   if (!requireMinLength(content.supportingText, 8)) {
     return "invalid_supporting_text";
   }
-
-  if (!requireNonEmpty(content.primaryCtaLabel)) {
-    return "invalid_primary_cta_label";
-  }
-
   if (!requireMinLength(content.primaryCtaLabel, 3)) {
     return "invalid_primary_cta_label";
   }
-
   if (
     !requireNonEmpty(content.primaryCtaHref) ||
     !isSafeInternalHref(content.primaryCtaHref)
   ) {
     return "invalid_primary_cta_href";
   }
-
-  if (!requireNonEmpty(content.pricingTitle)) {
-    return "invalid_pricing_title";
-  }
-
   if (!requireMinLength(content.pricingTitle, 3)) {
     return "invalid_pricing_title";
   }
-
-  if (!requireNonEmpty(content.pricingText)) {
-    return "invalid_pricing_text";
-  }
-
   if (!requireMinLength(content.pricingText, 8)) {
     return "invalid_pricing_text";
   }
-
-  if (!requireNonEmpty(content.policyTitle)) {
-    return "invalid_policy_title";
-  }
-
   if (!requireMinLength(content.policyTitle, 3)) {
     return "invalid_policy_title";
   }
-
-  if (!requireNonEmpty(content.policyText)) {
-    return "invalid_policy_text";
-  }
-
   if (!requireMinLength(content.policyText, 8)) {
     return "invalid_policy_text";
   }
-
   if (!Array.isArray(content.faqs) || content.faqs.length === 0) {
     return "invalid_faqs";
   }
-
-  const hasInvalidFaq = content.faqs.some((faqItem) => {
-    const hasQuestion = requireNonEmpty(faqItem.question);
-    const hasAnswer = requireNonEmpty(faqItem.answer);
-
-    return !hasQuestion || !hasAnswer;
-  });
-
-  if (hasInvalidFaq) {
+  if (
+    content.faqs.some(
+      (faqItem) =>
+        !requireNonEmpty(faqItem.question) || !requireNonEmpty(faqItem.answer),
+    )
+  ) {
     return "invalid_faqs";
   }
 
@@ -210,26 +163,21 @@ export function validateHomepageContent(
 }
 
 export async function readHomepageContent(
-  storePath = getHomepageContentStorePath(),
+  database?: DatabaseAccess,
 ): Promise<HomepageContent> {
-  try {
-    const fileContents = await readFile(storePath, "utf8");
-    const parsedContent = JSON.parse(fileContents);
-    const content = normalizeHomepageContent(parsedContent);
+  const result = await getDatabase(database).query<HomepageContentRow>(`
+    SELECT content
+    FROM homepage_content
+    WHERE singleton = TRUE
+  `);
+  const content = normalizeHomepageContent(result.rows[0]?.content);
 
-    return content ?? defaultHomepageContent;
-  } catch (error) {
-    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
-      return defaultHomepageContent;
-    }
-
-    throw error;
-  }
+  return content ?? defaultHomepageContent;
 }
 
 export async function writeHomepageContent(
   content: HomepageContent,
-  storePath = getHomepageContentStorePath(),
+  database?: DatabaseAccess,
 ) {
   const validationError = validateHomepageContent(content);
 
@@ -237,11 +185,14 @@ export async function writeHomepageContent(
     throw new Error(validationError);
   }
 
-  const directory = path.dirname(storePath);
-  const temporaryPath = `${storePath}.tmp`;
-  const serializedContent = `${JSON.stringify(content, null, 2)}\n`;
-
-  await mkdir(directory, { recursive: true });
-  await writeFile(temporaryPath, serializedContent, "utf8");
-  await rename(temporaryPath, storePath);
+  await getDatabase(database).query(
+    `
+      INSERT INTO homepage_content (singleton, content)
+      VALUES (TRUE, $1::jsonb)
+      ON CONFLICT (singleton) DO UPDATE
+      SET content = EXCLUDED.content,
+          updated_at = CURRENT_TIMESTAMP
+    `,
+    [JSON.stringify(content)],
+  );
 }

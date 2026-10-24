@@ -1,5 +1,8 @@
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import path from "node:path";
+import {
+  getDatabase,
+  type DatabaseAccess,
+  type DatabaseQueryable,
+} from "./server/database";
 
 export type OperatorAvailabilityMode = "available" | "unavailable";
 
@@ -9,9 +12,9 @@ export type OperatorDayAvailability = {
 
 export type OperatorAvailability = Record<string, OperatorDayAvailability>;
 
-type AvailabilityStoreFile = {
-  dates?: unknown;
-  blockedDates?: unknown;
+type AvailabilityRow = {
+  availability_date: string;
+  mode: OperatorAvailabilityMode;
 };
 
 export const DEFAULT_OPERATOR_DAY_AVAILABILITY: OperatorDayAvailability = {
@@ -19,13 +22,6 @@ export const DEFAULT_OPERATOR_DAY_AVAILABILITY: OperatorDayAvailability = {
 };
 
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
-
-function getAvailabilityStorePath() {
-  return (
-    process.env.BGH_AVAILABILITY_STORE_PATH ??
-    path.join(process.cwd(), "data", "operator-availability.json")
-  );
-}
 
 export function isOperatorAvailabilityDate(value: string) {
   if (!DATE_PATTERN.test(value)) {
@@ -64,40 +60,6 @@ function normalizeAvailabilityRecord(values: unknown): OperatorAvailability {
   );
 }
 
-function normalizeLegacyBlockedDates(values: unknown): OperatorAvailability {
-  if (!Array.isArray(values)) {
-    return {};
-  }
-
-  return Object.fromEntries(
-    Array.from(
-      new Set(
-        values.filter(
-          (value): value is string =>
-            typeof value === "string" && isOperatorAvailabilityDate(value),
-        ),
-      ),
-    )
-      .sort()
-      .map((date) => [date, { mode: "unavailable" }]),
-  );
-}
-
-function toStoreFile(availability: OperatorAvailability): AvailabilityStoreFile {
-  return {
-    dates: Object.fromEntries(
-      Object.entries(availability)
-        .filter(([, dayAvailability]) =>
-          isOperatorAvailabilityMode(dayAvailability.mode),
-        )
-        .sort(([firstDate], [secondDate]) =>
-          firstDate.localeCompare(secondDate),
-        )
-        .map(([date, dayAvailability]) => [date, dayAvailability.mode]),
-    ),
-  };
-}
-
 export function toOperatorAvailability(
   dates: Record<string, OperatorAvailabilityMode>,
 ): OperatorAvailability {
@@ -125,45 +87,58 @@ export function isDateUnavailable(
   return getOperatorDateAvailability(availability, date).mode === "unavailable";
 }
 
+async function readAvailabilityRows(database: DatabaseQueryable) {
+  const result = await database.query<AvailabilityRow>(`
+    SELECT availability_date::text AS availability_date, mode
+    FROM operator_availability
+    ORDER BY availability_date ASC
+  `);
+
+  return Object.fromEntries(
+    result.rows.map((row) => [row.availability_date, { mode: row.mode }]),
+  );
+}
+
 export async function readOperatorAvailability(
-  storePath = getAvailabilityStorePath(),
+  database?: DatabaseAccess,
 ): Promise<OperatorAvailability> {
-  try {
-    const fileContents = await readFile(storePath, "utf8");
-    const parsedValue = JSON.parse(fileContents) as AvailabilityStoreFile;
-    const availability = normalizeAvailabilityRecord(parsedValue.dates);
-
-    if (Object.keys(availability).length > 0) {
-      return availability;
-    }
-
-    return normalizeLegacyBlockedDates(parsedValue.blockedDates);
-  } catch (error) {
-    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
-      return {};
-    }
-
-    throw error;
-  }
+  return readAvailabilityRows(getDatabase(database));
 }
 
 export async function writeOperatorAvailability(
   availability: OperatorAvailability,
-  storePath = getAvailabilityStorePath(),
+  database?: DatabaseAccess,
 ) {
-  const directory = path.dirname(storePath);
-  const temporaryPath = `${storePath}.tmp`;
-  const serializedStore = `${JSON.stringify(toStoreFile(availability), null, 2)}\n`;
+  const normalizedAvailability = normalizeAvailabilityRecord(
+    Object.fromEntries(
+      Object.entries(availability).map(([date, dayAvailability]) => [
+        date,
+        dayAvailability.mode,
+      ]),
+    ),
+  );
 
-  await mkdir(directory, { recursive: true });
-  await writeFile(temporaryPath, serializedStore, "utf8");
-  await rename(temporaryPath, storePath);
+  await getDatabase(database).transaction(async (client) => {
+    await client.query("DELETE FROM operator_availability");
+
+    for (const [date, dayAvailability] of Object.entries(
+      normalizedAvailability,
+    )) {
+      await client.query(
+        `
+          INSERT INTO operator_availability (availability_date, mode)
+          VALUES ($1, $2)
+        `,
+        [date, dayAvailability.mode],
+      );
+    }
+  });
 }
 
 export async function setOperatorDateAvailability(
   date: string,
   mode: OperatorAvailabilityMode,
-  storePath = getAvailabilityStorePath(),
+  database?: DatabaseAccess,
 ) {
   if (!isOperatorAvailabilityDate(date)) {
     throw new Error("Invalid availability date");
@@ -173,12 +148,18 @@ export async function setOperatorDateAvailability(
     throw new Error("Invalid availability mode");
   }
 
-  const currentAvailability = await readOperatorAvailability(storePath);
-  const nextAvailability = { ...currentAvailability };
+  return getDatabase(database).transaction(async (client) => {
+    await client.query(
+      `
+        INSERT INTO operator_availability (availability_date, mode)
+        VALUES ($1, $2)
+        ON CONFLICT (availability_date) DO UPDATE
+        SET mode = EXCLUDED.mode,
+            updated_at = CURRENT_TIMESTAMP
+      `,
+      [date, mode],
+    );
 
-  nextAvailability[date] = { mode };
-
-  await writeOperatorAvailability(nextAvailability, storePath);
-
-  return nextAvailability;
+    return readAvailabilityRows(client);
+  });
 }

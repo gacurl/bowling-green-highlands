@@ -1,43 +1,14 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import path from "node:path";
 import test from "node:test";
 import { renderToStaticMarkup } from "react-dom/server";
+import { setDatabaseForTests } from "../../lib/server/database";
+import { createTestDatabase } from "../../lib/test-support/postgres-test-database";
 import AdminPage from "./page";
 
 test("renders reservation requests above the availability calendar", async (t) => {
-  const directory = await mkdtemp(path.join(tmpdir(), "bgh-admin-page-"));
-  const previousAvailabilityStorePath =
-    process.env.BGH_AVAILABILITY_STORE_PATH;
-  const previousRequestsStorePath =
-    process.env.BGH_RESERVATION_REQUESTS_STORE_PATH;
+  setDatabaseForTests(await createTestDatabase());
 
-  process.env.BGH_AVAILABILITY_STORE_PATH = path.join(
-    directory,
-    "operator-availability.json",
-  );
-  process.env.BGH_RESERVATION_REQUESTS_STORE_PATH = path.join(
-    directory,
-    "reservation-requests.json",
-  );
-
-  t.after(async () => {
-    if (previousAvailabilityStorePath === undefined) {
-      delete process.env.BGH_AVAILABILITY_STORE_PATH;
-    } else {
-      process.env.BGH_AVAILABILITY_STORE_PATH = previousAvailabilityStorePath;
-    }
-
-    if (previousRequestsStorePath === undefined) {
-      delete process.env.BGH_RESERVATION_REQUESTS_STORE_PATH;
-    } else {
-      process.env.BGH_RESERVATION_REQUESTS_STORE_PATH =
-        previousRequestsStorePath;
-    }
-
-    await rm(directory, { force: true, recursive: true });
-  });
+  t.after(() => setDatabaseForTests(null));
 
   const markup = renderToStaticMarkup(await AdminPage({}));
   const requestsBarIndex = markup.indexOf(">Reservation requests</h2>");

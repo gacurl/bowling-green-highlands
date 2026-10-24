@@ -4,6 +4,7 @@ import {
   resolveAdminSessionCredential,
 } from "./admin-credential-store";
 import { isValidAdminSessionCookieValue } from "./admin-session";
+import type { DatabaseAccess } from "../../lib/server/database";
 
 export type AdminPasswordSetupAuthorization =
   | "authorized"
@@ -27,8 +28,8 @@ type AdminPasswordSetupInput = {
 export type AdminPasswordSetupOptions = {
   adminPassword: string | undefined;
   bootstrapMode: string | undefined;
+  database?: DatabaseAccess;
   recoveryMode: string | undefined;
-  storePath?: string;
 };
 
 export type AdminPasswordSetupOutcome = {
@@ -48,7 +49,7 @@ export async function authorizeAdminPasswordSetup(
     return "invalid_session";
   }
 
-  const credentialState = await readAdminOwnerCredential(options.storePath);
+  const credentialState = await readAdminOwnerCredential(options.database);
 
   if (credentialState.kind === "unavailable") {
     return "unavailable";
@@ -96,7 +97,7 @@ export async function setupAdminOwnerPassword(
 
   const initialization = await initializeAdminOwnerCredential(
     input.newPassword,
-    options.storePath,
+    options.database,
   );
 
   switch (initialization.kind) {

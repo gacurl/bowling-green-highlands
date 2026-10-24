@@ -1,8 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import path from "node:path";
+import { createTestDatabase } from "../test-support/postgres-test-database";
 import { defaultHomepageContent } from "./homepage-content";
 import {
   readHomepageContent,
@@ -10,20 +8,14 @@ import {
   writeHomepageContent,
 } from "./homepage-content-store";
 
-async function createStorePath() {
-  const directory = await mkdtemp(path.join(tmpdir(), "bgh-homepage-content-"));
+test("returns default homepage content when no row exists", async () => {
+  const database = await createTestDatabase();
 
-  return path.join(directory, "homepage-content.json");
-}
-
-test("returns default homepage content when store file does not exist", async () => {
-  const storePath = await createStorePath();
-
-  assert.deepEqual(await readHomepageContent(storePath), defaultHomepageContent);
+  assert.deepEqual(await readHomepageContent(database), defaultHomepageContent);
 });
 
 test("writes and reads homepage content", async () => {
-  const storePath = await createStorePath();
+  const database = await createTestDatabase();
   const updatedContent = {
     eyebrow: "Welcome",
     headline: "Request your date.",
@@ -43,9 +35,9 @@ test("writes and reads homepage content", async () => {
     ],
   };
 
-  await writeHomepageContent(updatedContent, storePath);
+  await writeHomepageContent(updatedContent, database);
 
-  assert.deepEqual(await readHomepageContent(storePath), updatedContent);
+  assert.deepEqual(await readHomepageContent(database), updatedContent);
 });
 
 test("rejects invalid CTA href values", async () => {

@@ -1,23 +1,21 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import path from "node:path";
+import { createTestDatabase } from "../../lib/test-support/postgres-test-database";
 import {
   createReservationRequestRecord,
   isReservationRequestStatusUpdate,
   markReservationRequestPaid,
   readReservationRequests,
   updateReservationRequestStatus,
+  writeReservationRequests,
 } from "./reservation-requests";
+import type { ReservationRequestRecord } from "./reservation-requests";
 
 async function createStorePath() {
-  const directory = await mkdtemp(path.join(tmpdir(), "bgh-requests-"));
-
-  return path.join(directory, "reservation-requests.json");
+  return createTestDatabase();
 }
 
-test("returns empty array when no request store exists", async () => {
+test("returns empty array when no request rows exist", async () => {
   assert.deepEqual(await readReservationRequests(await createStorePath()), []);
 });
 
@@ -154,8 +152,7 @@ test("rejects invalid status update values", () => {
 
 test("reads accepted and declined statuses from persisted requests", async () => {
   const storePath = await createStorePath();
-  const seededStore = {
-    requests: [
+  const seededRequests: ReservationRequestRecord[] = [
       {
         createdAt: "2026-06-14T09:00:00.000Z",
         eventType: "farm_stay",
@@ -176,10 +173,9 @@ test("reads accepted and declined statuses from persisted requests", async () =>
         requestedDates: "2026-06-15 09:00 to 09:30",
         status: "declined",
       },
-    ],
-  };
+  ];
 
-  await writeFile(storePath, `${JSON.stringify(seededStore, null, 2)}\n`, "utf8");
+  await writeReservationRequests(seededRequests, storePath);
 
   const reservationRequests = await readReservationRequests(storePath);
 
@@ -189,7 +185,7 @@ test("reads accepted and declined statuses from persisted requests", async () =>
 
 test("normalizes a legacy reservation without payment status to unpaid", async () => {
   const storePath = await createStorePath();
-  const legacyRequest = {
+  const legacyRequest: ReservationRequestRecord = {
     createdAt: "2026-06-14T09:00:00.000Z",
     eventType: "farm_stay",
     guestEmail: "legacy@example.com",
@@ -200,11 +196,7 @@ test("normalizes a legacy reservation without payment status to unpaid", async (
     status: "accepted",
   };
 
-  await writeFile(
-    storePath,
-    `${JSON.stringify({ requests: [legacyRequest] }, null, 2)}\n`,
-    "utf8",
-  );
+  await writeReservationRequests([legacyRequest], storePath);
 
   const [normalizedRequest] = await readReservationRequests(storePath);
 
@@ -334,8 +326,6 @@ test("an already-paid reservation remains paid without another write", async () 
     "updated",
   );
 
-  await mkdir(`${storePath}.tmp`);
-
   assert.equal(
     await markReservationRequestPaid(request.id, storePath),
     "already_paid",
@@ -430,10 +420,9 @@ test("declining one request does not change another request", async () => {
   assert.equal(untouchedSecond.status, "pending");
 });
 
-test("updates only one record when duplicate request ids exist", async () => {
+test("rejects duplicate request ids and rolls back the replacement", async () => {
   const storePath = await createStorePath();
-  const seededStore = {
-    requests: [
+  const seededRequests: ReservationRequestRecord[] = [
       {
         createdAt: "2026-06-14T09:00:00.000Z",
         eventType: "farm_stay",
@@ -454,23 +443,10 @@ test("updates only one record when duplicate request ids exist", async () => {
         requestedDates: "2026-06-15 09:00 to 09:30",
         status: "pending",
       },
-    ],
-  };
+  ];
 
-  await writeFile(storePath, `${JSON.stringify(seededStore, null, 2)}\n`, "utf8");
-
-  assert.equal(
-    await updateReservationRequestStatus("duplicate-id", "accepted", storePath),
-    "updated",
-  );
-
-  const reservationRequests = await readReservationRequests(storePath);
-  const acceptedCount = reservationRequests.filter(
-    (requestRecord) => requestRecord.status === "accepted",
-  ).length;
-
-  assert.equal(acceptedCount, 1);
-  assert.equal(reservationRequests[1].status, "pending");
+  await assert.rejects(writeReservationRequests(seededRequests, storePath));
+  assert.deepEqual(await readReservationRequests(storePath), []);
 });
 
 test("blocks accepting a second pending request for the same requested slot", async () => {
@@ -591,4 +567,41 @@ test("declining still works when another request for the same slot is accepted",
 
   assert.ok(updatedDeclinedRequest);
   assert.equal(updatedDeclinedRequest.status, "declined");
+});
+
+test("concurrent acceptance permits only one request for an exact slot", async () => {
+  const database = await createStorePath();
+  const firstRequest = await createReservationRequestRecord(
+    {
+      eventType: "farm_stay",
+      guestEmail: "first-concurrent@example.com",
+      guestName: "First Concurrent Guest",
+      requestNotes: "",
+      requestedDates: "2026-07-05 09:00 to 09:30",
+    },
+    database,
+  );
+  const secondRequest = await createReservationRequestRecord(
+    {
+      eventType: "retreat",
+      guestEmail: "second-concurrent@example.com",
+      guestName: "Second Concurrent Guest",
+      requestNotes: "",
+      requestedDates: "2026-07-05 09:00 to 09:30",
+    },
+    database,
+  );
+
+  const results = await Promise.all([
+    updateReservationRequestStatus(firstRequest.id, "accepted", database),
+    updateReservationRequestStatus(secondRequest.id, "accepted", database),
+  ]);
+
+  assert.deepEqual(results.sort(), ["slot_conflict", "updated"]);
+  assert.equal(
+    (await readReservationRequests(database)).filter(
+      (request) => request.status === "accepted",
+    ).length,
+    1,
+  );
 });
