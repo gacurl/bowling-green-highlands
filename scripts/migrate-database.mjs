@@ -39,7 +39,12 @@ const pool = new Pool({
 });
 
 try {
-  const appliedMigrations = await applyMigrations({ pool, runtimeRole });
+  const appliedMigrations = await applyMigrations({
+    confirmProduction: confirmsProduction,
+    pool,
+    runtimeRole,
+    target,
+  });
   process.stdout.write(
     `Verified ${appliedMigrations.length} migration(s) for ${target}.\n`,
   );
