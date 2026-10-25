@@ -48,9 +48,18 @@ What this does not do yet:
 ## Durable Persistence
 
 Owner credentials, operator availability, reservation/payment state, and
-homepage content are stored in PostgreSQL. `DATABASE_URL` must be a server-only
-pooled Neon connection for the current environment's runtime role. Production
-and Preview use isolated Neon branches and roles.
+homepage content are stored in PostgreSQL. Local development and Vercel Preview
+use the server-only pooled Neon connection in `DATABASE_URL`. Vercel Production
+uses only the restricted runtime-role connection in
+`BGH_RUNTIME_DATABASE_URL`; a missing or blank Production credential fails
+closed and never falls back to `DATABASE_URL`. Keep the Neon-managed
+`DATABASE_URL` untouched. Production and Preview use isolated Neon branches and
+roles.
+
+Scope `BGH_RUNTIME_DATABASE_URL` only to Vercel Production. Adding or changing
+it and creating the deployment require separate approval. Redeploy after the
+approved environment change because existing deployments do not receive new
+environment-variable values.
 
 Database migrations never run during application startup, build, or deployment.
 Run them explicitly with a direct connection owned by the separately authorized
@@ -146,7 +155,8 @@ npm run dev
 
 ## Environment Variables
 
-The app currently expects these variables in `.env.local`:
+Local setup values belong in `.env.local`. Vercel-only values are identified
+separately below:
 
 - `NEXT_PUBLIC_APP_URL`
   Public base URL for local development and future links.
@@ -174,7 +184,13 @@ The app currently expects these variables in `.env.local`:
   Set to `enabled` only for first-time owner password setup, then disable or
   remove it after initialization.
 - `DATABASE_URL`
-  Server-only pooled Neon connection for the environment-specific runtime role.
+  Server-only pooled Neon connection used by local development and Vercel
+  Preview. Keep the Neon integration-managed Production value untouched; the
+  application does not use it as a Production fallback.
+- `BGH_RUNTIME_DATABASE_URL`
+  Server-only pooled connection for the restricted Production runtime role.
+  Configure it only in the Vercel Production scope after separate approval,
+  then redeploy. Do not configure it for Preview or local development.
 - `STRIPE_SECRET_KEY`
   Server-only Stripe test secret key for local development.
 - `STRIPE_CHECKOUT_PRICE_ID`

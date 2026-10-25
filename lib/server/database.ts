@@ -23,8 +23,11 @@ export type DatabaseAccess = DatabaseQueryable & {
   ): Promise<Result>;
 };
 
-function getDatabaseUrl() {
-  const databaseUrl = process.env.DATABASE_URL?.trim();
+export function getDatabaseUrl(environment: NodeJS.ProcessEnv = process.env) {
+  const databaseUrl =
+    environment.VERCEL_ENV === "production"
+      ? environment.BGH_RUNTIME_DATABASE_URL?.trim()
+      : environment.DATABASE_URL?.trim();
 
   if (!databaseUrl) {
     throw new Error("Database configuration is unavailable");
