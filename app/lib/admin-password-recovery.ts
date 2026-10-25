@@ -8,6 +8,7 @@ import {
   isValidAdminSessionCookieValue,
   type AdminSessionCredential,
 } from "./admin-session";
+import type { DatabaseAccess } from "../../lib/server/database";
 
 export type AdminPasswordRecoveryAuthorization =
   | "authorized"
@@ -31,8 +32,8 @@ type AdminPasswordRecoveryInput = {
 export type AdminPasswordRecoveryOptions = {
   adminPassword: string | undefined;
   bootstrapMode?: string;
+  database?: DatabaseAccess;
   recoveryMode: string | undefined;
-  storePath?: string;
 };
 
 export type AdminPasswordRecoveryOutcome = {
@@ -64,7 +65,7 @@ async function getAdminPasswordRecoveryAuthorizationContext(
     return { authorization: "invalid_session" };
   }
 
-  const credentialState = await readAdminOwnerCredential(options.storePath);
+  const credentialState = await readAdminOwnerCredential(options.database);
 
   if (credentialState.kind === "unavailable") {
     return { authorization: "unavailable" };
@@ -119,7 +120,7 @@ export async function resetAdminOwnerPasswordFromRecovery(
       : authorization.sessionCredential.sessionVersion;
   const replacement = await replaceAdminOwnerCredential(
     input.newPassword,
-    options.storePath,
+    options.database,
     expectedSessionVersion,
   );
 

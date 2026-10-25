@@ -1,8 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import path from "node:path";
+import {
+  setDatabaseForTests,
+  type DatabaseAccess,
+} from "./server/database";
+import { createTestDatabase } from "./test-support/postgres-test-database";
 import {
   getReserveExampleSlots,
   isReserveExampleSlotValue,
@@ -14,30 +16,16 @@ import {
   updateReservationRequestStatus,
 } from "../app/lib/reservation-requests";
 
-async function withAvailabilityStore<T>(runTest: (storePath: string) => Promise<T>) {
-  const previousStorePath = process.env.BGH_AVAILABILITY_STORE_PATH;
-  const previousRequestStorePath = process.env.BGH_RESERVATION_REQUESTS_STORE_PATH;
-  const directory = await mkdtemp(path.join(tmpdir(), "bgh-reserve-"));
-  const storePath = path.join(directory, "operator-availability.json");
-  const requestStorePath = path.join(directory, "reservation-requests.json");
-
-  process.env.BGH_AVAILABILITY_STORE_PATH = storePath;
-  process.env.BGH_RESERVATION_REQUESTS_STORE_PATH = requestStorePath;
+async function withAvailabilityStore<T>(
+  runTest: (database: DatabaseAccess) => Promise<T>,
+) {
+  const database = await createTestDatabase();
+  setDatabaseForTests(database);
 
   try {
-    return await runTest(storePath);
+    return await runTest(database);
   } finally {
-    if (previousStorePath === undefined) {
-      delete process.env.BGH_AVAILABILITY_STORE_PATH;
-    } else {
-      process.env.BGH_AVAILABILITY_STORE_PATH = previousStorePath;
-    }
-
-    if (previousRequestStorePath === undefined) {
-      delete process.env.BGH_RESERVATION_REQUESTS_STORE_PATH;
-    } else {
-      process.env.BGH_RESERVATION_REQUESTS_STORE_PATH = previousRequestStorePath;
-    }
+    setDatabaseForTests(null);
   }
 }
 

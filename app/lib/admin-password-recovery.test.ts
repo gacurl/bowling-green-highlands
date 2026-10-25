@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import path from "node:path";
 import test from "node:test";
+import type { DatabaseAccess } from "../../lib/server/database";
+import {
+  createTestDatabase,
+  createUnavailableTestDatabase,
+  failDatabaseMutations,
+} from "../../lib/test-support/postgres-test-database";
 import {
   authorizeAdminPasswordRecovery,
   getAdminPasswordRecoveryOutcome,
@@ -26,28 +29,24 @@ const OWNER_PASSWORD = "synthetic-current-owner-password";
 const REPLACEMENT_PASSWORD = "synthetic-replacement-owner-password";
 const RECOVERY_PASSWORD = "synthetic-recovery-password";
 
-async function createCredentialStorePath() {
-  const directory = await mkdtemp(
-    path.join(tmpdir(), "bgh-admin-password-recovery-"),
-  );
-
-  return path.join(directory, "admin-owner-credential.json");
+async function createCredentialDatabase() {
+  return createTestDatabase();
 }
 
 function createRecoveryOptions(
-  storePath: string,
+  database: DatabaseAccess,
 ): AdminPasswordRecoveryOptions {
   return {
     adminPassword: RECOVERY_PASSWORD,
     recoveryMode: ADMIN_RECOVERY_MODE_ENABLED_VALUE,
-    storePath,
+    database,
   };
 }
 
-async function createRecoveryCookie(storePath: string) {
+async function createRecoveryCookie(database: DatabaseAccess) {
   const authentication = await authenticateAdminPassword(
     RECOVERY_PASSWORD,
-    createRecoveryOptions(storePath),
+    createRecoveryOptions(database),
   );
 
   assert.equal(authentication.kind, "authenticated");
@@ -59,11 +58,11 @@ async function createRecoveryCookie(storePath: string) {
   return createAdminSessionCookieValue(authentication.session);
 }
 
-async function createOwnerCookie(storePath: string) {
+async function createOwnerCookie(database: DatabaseAccess) {
   const authentication = await authenticateAdminPassword(OWNER_PASSWORD, {
     adminPassword: RECOVERY_PASSWORD,
     recoveryMode: undefined,
-    storePath,
+    database,
   });
 
   assert.equal(authentication.kind, "authenticated");
@@ -75,30 +74,30 @@ async function createOwnerCookie(storePath: string) {
 }
 
 test("recovery reset denies unauthenticated, owner, and bootstrap sessions", async () => {
-  const ownerStorePath = await createCredentialStorePath();
+  const ownerDatabase = await createCredentialDatabase();
   assert.equal(
-    (await replaceAdminOwnerCredential(OWNER_PASSWORD, ownerStorePath)).kind,
+    (await replaceAdminOwnerCredential(OWNER_PASSWORD, ownerDatabase)).kind,
     "replaced",
   );
-  const recoveryOptions = createRecoveryOptions(ownerStorePath);
+  const recoveryOptions = createRecoveryOptions(ownerDatabase);
 
   assert.equal(
     await authorizeAdminPasswordRecovery(undefined, recoveryOptions),
     "invalid_session",
   );
 
-  const ownerCookie = await createOwnerCookie(ownerStorePath);
+  const ownerCookie = await createOwnerCookie(ownerDatabase);
   assert.equal(
     await authorizeAdminPasswordRecovery(ownerCookie, recoveryOptions),
     "invalid_session",
   );
 
-  const bootstrapStorePath = await createCredentialStorePath();
+  const bootstrapDatabase = await createCredentialDatabase();
   const bootstrapOptions = {
     adminPassword: RECOVERY_PASSWORD,
     bootstrapMode: ADMIN_BOOTSTRAP_MODE_ENABLED_VALUE,
     recoveryMode: undefined,
-    storePath: bootstrapStorePath,
+    database: bootstrapDatabase,
   };
   const bootstrapAuthentication = await authenticateAdminPassword(
     RECOVERY_PASSWORD,
@@ -122,23 +121,23 @@ test("recovery reset denies unauthenticated, owner, and bootstrap sessions", asy
 });
 
 test("recovery reset requires enabled recovery mode and a current recovery session", async () => {
-  const storePath = await createCredentialStorePath();
+  const database = await createCredentialDatabase();
   assert.equal(
-    (await replaceAdminOwnerCredential(OWNER_PASSWORD, storePath)).kind,
+    (await replaceAdminOwnerCredential(OWNER_PASSWORD, database)).kind,
     "replaced",
   );
-  const cookieValue = await createRecoveryCookie(storePath);
+  const cookieValue = await createRecoveryCookie(database);
 
   assert.equal(
     await authorizeAdminPasswordRecovery(
       cookieValue,
-      createRecoveryOptions(storePath),
+      createRecoveryOptions(database),
     ),
     "authorized",
   );
   assert.equal(
     await authorizeAdminPasswordRecovery(cookieValue, {
-      ...createRecoveryOptions(storePath),
+      ...createRecoveryOptions(database),
       recoveryMode: undefined,
     }),
     "invalid_session",
@@ -146,22 +145,22 @@ test("recovery reset requires enabled recovery mode and a current recovery sessi
   assert.equal(
     await authorizeAdminPasswordRecovery(
       "synthetic-stale-session-cookie",
-      createRecoveryOptions(storePath),
+      createRecoveryOptions(database),
     ),
     "invalid_session",
   );
 });
 
 test("matching recovery reset rotates all sessions and requires normal sign-in", async () => {
-  const storePath = await createCredentialStorePath();
+  const database = await createCredentialDatabase();
   assert.equal(
-    (await replaceAdminOwnerCredential(OWNER_PASSWORD, storePath)).kind,
+    (await replaceAdminOwnerCredential(OWNER_PASSWORD, database)).kind,
     "replaced",
   );
-  const ownerCookie = await createOwnerCookie(storePath);
-  const currentRecoveryCookie = await createRecoveryCookie(storePath);
-  const otherRecoveryCookie = await createRecoveryCookie(storePath);
-  const recoveryOptions = createRecoveryOptions(storePath);
+  const ownerCookie = await createOwnerCookie(database);
+  const currentRecoveryCookie = await createRecoveryCookie(database);
+  const otherRecoveryCookie = await createRecoveryCookie(database);
+  const recoveryOptions = createRecoveryOptions(database);
 
   const result = await resetAdminOwnerPasswordFromRecovery(
     {
@@ -222,13 +221,13 @@ test("matching recovery reset rotates all sessions and requires normal sign-in",
 });
 
 test("mismatched, blank, and whitespace-padded passwords preserve the owner credential", async () => {
-  const storePath = await createCredentialStorePath();
+  const database = await createCredentialDatabase();
   assert.equal(
-    (await replaceAdminOwnerCredential(OWNER_PASSWORD, storePath)).kind,
+    (await replaceAdminOwnerCredential(OWNER_PASSWORD, database)).kind,
     "replaced",
   );
-  const cookieValue = await createRecoveryCookie(storePath);
-  const options = createRecoveryOptions(storePath);
+  const cookieValue = await createRecoveryCookie(database);
+  const options = createRecoveryOptions(database);
 
   assert.equal(
     await resetAdminOwnerPasswordFromRecovery(
@@ -275,11 +274,11 @@ test("mismatched, blank, and whitespace-padded passwords preserve the owner cred
 });
 
 test("missing credential state can be restored only through explicit recovery mode", async () => {
-  const storePath = await createCredentialStorePath();
-  const recoveryOptions = createRecoveryOptions(storePath);
-  const cookieValue = await createRecoveryCookie(storePath);
+  const database = await createCredentialDatabase();
+  const recoveryOptions = createRecoveryOptions(database);
+  const cookieValue = await createRecoveryCookie(database);
 
-  assert.equal((await readAdminOwnerCredential(storePath)).kind, "missing");
+  assert.equal((await readAdminOwnerCredential(database)).kind, "missing");
   assert.equal(
     await authorizeAdminPasswordRecovery(cookieValue, {
       ...recoveryOptions,
@@ -287,7 +286,7 @@ test("missing credential state can be restored only through explicit recovery mo
     }),
     "invalid_session",
   );
-  assert.equal((await readAdminOwnerCredential(storePath)).kind, "missing");
+  assert.equal((await readAdminOwnerCredential(database)).kind, "missing");
 
   assert.equal(
     await resetAdminOwnerPasswordFromRecovery(
@@ -300,7 +299,7 @@ test("missing credential state can be restored only through explicit recovery mo
     ),
     "reset",
   );
-  assert.equal((await readAdminOwnerCredential(storePath)).kind, "ready");
+  assert.equal((await readAdminOwnerCredential(database)).kind, "ready");
   assert.equal(
     (
       await authenticateAdminPassword(REPLACEMENT_PASSWORD, {
@@ -312,42 +311,34 @@ test("missing credential state can be restored only through explicit recovery mo
   );
 });
 
-test("malformed and unreadable credential state cannot be overwritten", async () => {
-  const malformedStorePath = await createCredentialStorePath();
-  const malformedContents = "malformed synthetic credential state\n";
-  await writeFile(malformedStorePath, malformedContents, "utf8");
-  const unreadableStorePath = await createCredentialStorePath();
-  await mkdir(unreadableStorePath);
-
-  for (const storePath of [malformedStorePath, unreadableStorePath]) {
-    assert.equal(
-      await resetAdminOwnerPasswordFromRecovery(
-        {
-          confirmation: REPLACEMENT_PASSWORD,
-          cookieValue: "synthetic-recovery-cookie",
-          newPassword: REPLACEMENT_PASSWORD,
-        },
-        createRecoveryOptions(storePath),
-      ),
-      "unavailable",
-    );
-    assert.equal((await readAdminOwnerCredential(storePath)).kind, "unavailable");
-  }
+test("unavailable credential state cannot be overwritten", async () => {
+  const unavailableDatabase = createUnavailableTestDatabase();
 
   assert.equal(
-    await readFile(malformedStorePath, "utf8"),
-    malformedContents,
+    await resetAdminOwnerPasswordFromRecovery(
+      {
+        confirmation: REPLACEMENT_PASSWORD,
+        cookieValue: "synthetic-recovery-cookie",
+        newPassword: REPLACEMENT_PASSWORD,
+      },
+      createRecoveryOptions(unavailableDatabase),
+    ),
+    "unavailable",
+  );
+  assert.equal(
+    (await readAdminOwnerCredential(unavailableDatabase)).kind,
+    "unavailable",
   );
 });
 
 test("persistence failure preserves the existing owner credential", async () => {
-  const storePath = await createCredentialStorePath();
+  const database = await createCredentialDatabase();
   assert.equal(
-    (await replaceAdminOwnerCredential(OWNER_PASSWORD, storePath)).kind,
+    (await replaceAdminOwnerCredential(OWNER_PASSWORD, database)).kind,
     "replaced",
   );
-  const cookieValue = await createRecoveryCookie(storePath);
-  await mkdir(`${storePath}.tmp`);
+  const cookieValue = await createRecoveryCookie(database);
+  const failingDatabase = failDatabaseMutations(database);
 
   assert.equal(
     await resetAdminOwnerPasswordFromRecovery(
@@ -356,13 +347,13 @@ test("persistence failure preserves the existing owner credential", async () => 
         cookieValue,
         newPassword: REPLACEMENT_PASSWORD,
       },
-      createRecoveryOptions(storePath),
+      createRecoveryOptions(failingDatabase),
     ),
     "persistence_failed",
   );
 
   const normalOptions = {
-    ...createRecoveryOptions(storePath),
+    ...createRecoveryOptions(database),
     recoveryMode: undefined,
   };
   assert.equal(

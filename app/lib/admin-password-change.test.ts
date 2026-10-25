@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import path from "node:path";
 import test from "node:test";
+import type { DatabaseAccess } from "../../lib/server/database";
+import {
+  createTestDatabase,
+  createUnavailableTestDatabase,
+  failDatabaseMutations,
+} from "../../lib/test-support/postgres-test-database";
 import {
   changeAdminOwnerPassword,
   getAdminPasswordChangeOutcome,
@@ -23,23 +26,19 @@ const NEW_PASSWORD = "synthetic-new-owner-password";
 const RECOVERY_PASSWORD = "synthetic-recovery-password";
 
 async function createCredentialStorePath() {
-  const directory = await mkdtemp(
-    path.join(tmpdir(), "bgh-admin-password-change-"),
-  );
-
-  return path.join(directory, "admin-owner-credential.json");
+  return createTestDatabase();
 }
 
-async function createOwnerSession(storePath: string) {
+async function createOwnerSession(database: DatabaseAccess) {
   assert.equal(
-    (await replaceAdminOwnerCredential(CURRENT_PASSWORD, storePath)).kind,
+    (await replaceAdminOwnerCredential(CURRENT_PASSWORD, database)).kind,
     "replaced",
   );
 
   const authentication = await authenticateAdminPassword(CURRENT_PASSWORD, {
     adminPassword: RECOVERY_PASSWORD,
     recoveryMode: undefined,
-    storePath,
+    database,
   });
 
   assert.equal(authentication.kind, "authenticated");
@@ -50,17 +49,17 @@ async function createOwnerSession(storePath: string) {
   return createAdminSessionCookieValue(authentication.session);
 }
 
-function createChangeOptions(storePath: string) {
+function createChangeOptions(database: DatabaseAccess) {
   return {
     adminPassword: RECOVERY_PASSWORD,
     recoveryMode: undefined,
-    storePath,
+    database,
   };
 }
 
 test("authenticated owner changes password and invalidates the prior session", async () => {
-  const storePath = await createCredentialStorePath();
-  const oldCookie = await createOwnerSession(storePath);
+  const database = await createCredentialStorePath();
+  const oldCookie = await createOwnerSession(database);
   const result = await changeAdminOwnerPassword(
     {
       confirmation: NEW_PASSWORD,
@@ -68,7 +67,7 @@ test("authenticated owner changes password and invalidates the prior session", a
       currentPassword: CURRENT_PASSWORD,
       newPassword: NEW_PASSWORD,
     },
-    createChangeOptions(storePath),
+    createChangeOptions(database),
   );
 
   assert.equal(result, "changed");
@@ -81,7 +80,7 @@ test("authenticated owner changes password and invalidates the prior session", a
       await authenticateAdminPassword(CURRENT_PASSWORD, {
         adminPassword: RECOVERY_PASSWORD,
         recoveryMode: undefined,
-        storePath,
+        database,
       })
     ).kind,
     "invalid",
@@ -91,14 +90,14 @@ test("authenticated owner changes password and invalidates the prior session", a
       await authenticateAdminPassword(NEW_PASSWORD, {
         adminPassword: RECOVERY_PASSWORD,
         recoveryMode: undefined,
-        storePath,
+        database,
       })
     ).kind,
     "authenticated",
   );
 
   const currentSession = await resolveAdminSessionCredential(
-    createChangeOptions(storePath),
+    createChangeOptions(database),
   );
   assert.equal(
     await isValidAdminSessionCookieValue(oldCookie, currentSession),
@@ -107,8 +106,8 @@ test("authenticated owner changes password and invalidates the prior session", a
 });
 
 test("incorrect current password leaves the existing credential unchanged", async () => {
-  const storePath = await createCredentialStorePath();
-  const cookieValue = await createOwnerSession(storePath);
+  const database = await createCredentialStorePath();
+  const cookieValue = await createOwnerSession(database);
   const result = await changeAdminOwnerPassword(
     {
       confirmation: NEW_PASSWORD,
@@ -116,14 +115,14 @@ test("incorrect current password leaves the existing credential unchanged", asyn
       currentPassword: "synthetic-incorrect-current-password",
       newPassword: NEW_PASSWORD,
     },
-    createChangeOptions(storePath),
+    createChangeOptions(database),
   );
 
   assert.equal(result, "incorrect_current_password");
   assert.equal(
     (
       await authenticateAdminPassword(CURRENT_PASSWORD, {
-        ...createChangeOptions(storePath),
+        ...createChangeOptions(database),
       })
     ).kind,
     "authenticated",
@@ -131,7 +130,7 @@ test("incorrect current password leaves the existing credential unchanged", asyn
   assert.equal(
     (
       await authenticateAdminPassword(NEW_PASSWORD, {
-        ...createChangeOptions(storePath),
+        ...createChangeOptions(database),
       })
     ).kind,
     "invalid",
@@ -139,9 +138,9 @@ test("incorrect current password leaves the existing credential unchanged", asyn
 });
 
 test("mismatched or invalid replacement passwords do not change the credential", async () => {
-  const storePath = await createCredentialStorePath();
-  const cookieValue = await createOwnerSession(storePath);
-  const options = createChangeOptions(storePath);
+  const database = await createCredentialStorePath();
+  const cookieValue = await createOwnerSession(database);
+  const options = createChangeOptions(database);
 
   assert.equal(
     await changeAdminOwnerPassword(
@@ -178,9 +177,9 @@ test("mismatched or invalid replacement passwords do not change the credential",
 });
 
 test("persistence failure leaves the previous owner credential valid", async () => {
-  const storePath = await createCredentialStorePath();
-  const cookieValue = await createOwnerSession(storePath);
-  await mkdir(`${storePath}.tmp`);
+  const database = await createCredentialStorePath();
+  const cookieValue = await createOwnerSession(database);
+  const failingDatabase = failDatabaseMutations(database);
 
   const result = await changeAdminOwnerPassword(
     {
@@ -189,7 +188,7 @@ test("persistence failure leaves the previous owner credential valid", async () 
       currentPassword: CURRENT_PASSWORD,
       newPassword: NEW_PASSWORD,
     },
-    createChangeOptions(storePath),
+    createChangeOptions(failingDatabase),
   );
 
   assert.equal(result, "persistence_failed");
@@ -197,7 +196,7 @@ test("persistence failure leaves the previous owner credential valid", async () 
     (
       await authenticateAdminPassword(
         CURRENT_PASSWORD,
-        createChangeOptions(storePath),
+        createChangeOptions(database),
       )
     ).kind,
     "authenticated",
@@ -205,12 +204,12 @@ test("persistence failure leaves the previous owner credential valid", async () 
 });
 
 test("recovery sessions cannot replace the normal owner credential", async () => {
-  const storePath = await createCredentialStorePath();
-  await createOwnerSession(storePath);
+  const database = await createCredentialStorePath();
+  await createOwnerSession(database);
   const recoveryOptions = {
     adminPassword: RECOVERY_PASSWORD,
     recoveryMode: ADMIN_RECOVERY_MODE_ENABLED_VALUE,
-    storePath,
+    database,
   };
   const recoveryAuthentication = await authenticateAdminPassword(
     RECOVERY_PASSWORD,
@@ -241,7 +240,7 @@ test("recovery sessions cannot replace the normal owner credential", async () =>
     (
       await authenticateAdminPassword(
         CURRENT_PASSWORD,
-        createChangeOptions(storePath),
+        createChangeOptions(database),
       )
     ).kind,
     "authenticated",
@@ -249,8 +248,7 @@ test("recovery sessions cannot replace the normal owner credential", async () =>
 });
 
 test("unavailable state and redirects never expose submitted passwords", async () => {
-  const storePath = await createCredentialStorePath();
-  await writeFile(storePath, "malformed credential state\n", "utf8");
+  const database = createUnavailableTestDatabase();
   const result = await changeAdminOwnerPassword(
     {
       confirmation: NEW_PASSWORD,
@@ -258,7 +256,7 @@ test("unavailable state and redirects never expose submitted passwords", async (
       currentPassword: CURRENT_PASSWORD,
       newPassword: NEW_PASSWORD,
     },
-    createChangeOptions(storePath),
+    createChangeOptions(database),
   );
   const outcomes = [
     getAdminPasswordChangeOutcome(result),

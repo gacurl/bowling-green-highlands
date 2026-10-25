@@ -1,9 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import path from "node:path";
 import Stripe from "stripe";
+import { setDatabaseForTests } from "../../lib/server/database";
+import { createTestDatabase } from "../../lib/test-support/postgres-test-database";
 import {
   getReserveExampleSlots,
   RESERVE_EXAMPLE_DATE,
@@ -119,9 +118,7 @@ async function classifySignedPayload(
 }
 
 async function createStorePath() {
-  const directory = await mkdtemp(path.join(tmpdir(), "bgh-webhook-"));
-
-  return path.join(directory, "reservation-requests.json");
+  return createTestDatabase();
 }
 
 async function processSignedPayload(
@@ -172,6 +169,7 @@ test("verified completed and async-success events persist paid status", async ()
     ...acceptedRequest,
     id: "async-accepted-id",
     paymentStatus: "unpaid",
+    requestedDates: "2026-06-14 10:00 to 10:30",
   };
   await writeReservationRequests(
     [
@@ -201,8 +199,6 @@ test("verified completed and async-success events persist paid status", async ()
   );
   const persistedRequests = await readReservationRequests(storePath);
 
-  await mkdir(`${storePath}.tmp`);
-
   const duplicateResult = await processSignedPayload(
     {},
     loadRequests,
@@ -222,14 +218,7 @@ test("verified completed and async-success events persist paid status", async ()
 
 test("verified payment changes only payment status and preserves exact-slot availability", async () => {
   const requestStorePath = await createStorePath();
-  const availabilityStorePath = path.join(
-    path.dirname(requestStorePath),
-    "operator-availability.json",
-  );
-  const previousAvailabilityStorePath =
-    process.env.BGH_AVAILABILITY_STORE_PATH;
-  const previousRequestStorePath =
-    process.env.BGH_RESERVATION_REQUESTS_STORE_PATH;
+  const availabilityStorePath = requestStorePath;
   const paymentRequest: ReservationRequestRecord = {
     ...acceptedRequest,
     id: "payment-integrity-id",
@@ -240,8 +229,7 @@ test("verified payment changes only payment status and preserves exact-slot avai
 
   assert.ok(requestedSlot);
 
-  process.env.BGH_AVAILABILITY_STORE_PATH = availabilityStorePath;
-  process.env.BGH_RESERVATION_REQUESTS_STORE_PATH = requestStorePath;
+  setDatabaseForTests(requestStorePath);
 
   try {
     await setOperatorDateAvailability(
@@ -301,17 +289,7 @@ test("verified payment changes only payment status and preserves exact-slot avai
     assert.equal(exactSlotAfterPayment?.status, "unavailable");
     assert.equal(otherSlotAfterPayment?.status, "available");
   } finally {
-    if (previousAvailabilityStorePath === undefined) {
-      delete process.env.BGH_AVAILABILITY_STORE_PATH;
-    } else {
-      process.env.BGH_AVAILABILITY_STORE_PATH = previousAvailabilityStorePath;
-    }
-
-    if (previousRequestStorePath === undefined) {
-      delete process.env.BGH_RESERVATION_REQUESTS_STORE_PATH;
-    } else {
-      process.env.BGH_RESERVATION_REQUESTS_STORE_PATH = previousRequestStorePath;
-    }
+    setDatabaseForTests(null);
   }
 });
 

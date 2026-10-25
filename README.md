@@ -42,29 +42,77 @@ Current MVP scope:
 What this does not do yet:
 - no confirmed booking flow
 - no live Stripe payments before explicit go-live approval
-- no database-backed persistence layer
 - no submission list or admin dashboard
 - no public account system
 
-## Operator Availability Persistence (Current MVP)
+## Durable Persistence
 
-Operator availability is stored in a local JSON file:
-- default path: `data/operator-availability.json`
-- override path: `BGH_AVAILABILITY_STORE_PATH`
+Owner credentials, operator availability, reservation/payment state, and
+homepage content are stored in PostgreSQL. Local development and Vercel Preview
+use the server-only pooled Neon connection in `DATABASE_URL`. Vercel Production
+uses only the restricted runtime-role connection in
+`BGH_RUNTIME_DATABASE_URL`; a missing or blank Production credential fails
+closed and never falls back to `DATABASE_URL`. Keep the Neon-managed
+`DATABASE_URL` untouched. Production and Preview use isolated Neon branches and
+roles.
 
-This is intentionally MVP-local friendly:
-- simple to run locally
-- easy to inspect
-- low operational overhead for current scope
+Scope `BGH_RUNTIME_DATABASE_URL` only to Vercel Production. Adding or changing
+it and creating the deployment require separate approval. Redeploy after the
+approved environment change because existing deployments do not receive new
+environment-variable values.
 
-Known limits:
-- not ideal for read-only serverless filesystems
-- concurrent writes are last-write-wins
-- invalid/corrupt JSON fails loudly at read time
+Database migrations never run during application startup, build, or deployment.
+Run them explicitly with a direct connection owned by the separately authorized
+migration role:
 
-Practical note:
-- this is acceptable for the current MVP phase
-- future growth may require moving availability persistence to a multi-writer-safe store, but that migration is out of scope for now
+```bash
+MIGRATION_DATABASE_URL='<migration-connection-string>' npm run db:migrate -- \
+  --target preview \
+  --runtime-role bgh_preview_app
+```
+
+Production additionally requires `--confirm-production`. The migration command
+requires target-specific `BGH_PREVIEW_NEON_PROJECT_ID` and
+`BGH_PREVIEW_NEON_BRANCH_ID` values (or their `BGH_PRODUCTION_*` equivalents).
+Before provisioning migration identity, use the authenticated Neon Console to
+select the intended branch and independently verify its project, branch, and
+compute endpoint IDs. Then, as that target's migration role, provision the
+identity table manually:
+
+```sql
+BEGIN;
+CREATE TABLE IF NOT EXISTS public.bgh_migration_identity (
+  singleton BOOLEAN PRIMARY KEY DEFAULT TRUE CHECK (singleton),
+  migration_target TEXT NOT NULL CHECK (
+    migration_target IN ('preview', 'production')
+  ),
+  neon_project_id TEXT NOT NULL,
+  neon_branch_id TEXT NOT NULL
+);
+REVOKE ALL PRIVILEGES ON public.bgh_migration_identity
+  FROM PUBLIC, bgh_preview_app;
+INSERT INTO public.bgh_migration_identity (
+  singleton, migration_target, neon_project_id, neon_branch_id
+) VALUES (TRUE, 'preview', '<project-id>', '<branch-id>')
+ON CONFLICT (singleton) DO UPDATE SET
+  migration_target = EXCLUDED.migration_target,
+  neon_project_id = EXCLUDED.neon_project_id,
+  neon_branch_id = EXCLUDED.neon_branch_id;
+COMMIT;
+```
+
+The runner only reads this table; it never creates, modifies, or repairs it. It
+requires one valid row, ownership by the authenticated migration role, and no
+effective runtime access before any migration write. Provision Production with
+its own verified values and a `production` target. Reverify and reprovision after
+cloning or resetting a branch. These values remain operator attestations, not
+Neon control-plane proof; a privileged administrator can change them.
+
+Preview requires the runtime role `bgh_preview_app`. For both targets, the
+migration role must be distinct from the runtime role. The runtime role must not
+be able to assume the migration role, have elevated role attributes, or have
+database/schema `CREATE`. The command preserves the least-privilege table and
+sequence grants required by the application stores.
 
 ## Planned Direction
 
@@ -107,7 +155,8 @@ npm run dev
 
 ## Environment Variables
 
-The app currently expects these variables in `.env.local`:
+Local setup values belong in `.env.local`. Vercel-only values are identified
+separately below:
 
 - `NEXT_PUBLIC_APP_URL`
   Public base URL for local development and future links.
@@ -134,8 +183,14 @@ The app currently expects these variables in `.env.local`:
 - `BGH_ADMIN_BOOTSTRAP_MODE`
   Set to `enabled` only for first-time owner password setup, then disable or
   remove it after initialization.
-- `BGH_ADMIN_CREDENTIAL_STORE_PATH`
-  Optional durable path override for the server-only owner credential state.
+- `DATABASE_URL`
+  Server-only pooled Neon connection used by local development and Vercel
+  Preview. Keep the Neon integration-managed Production value untouched; the
+  application does not use it as a Production fallback.
+- `BGH_RUNTIME_DATABASE_URL`
+  Server-only pooled connection for the restricted Production runtime role.
+  Configure it only in the Vercel Production scope after separate approval,
+  then redeploy. Do not configure it for Preview or local development.
 - `STRIPE_SECRET_KEY`
   Server-only Stripe test secret key for local development.
 - `STRIPE_CHECKOUT_PRICE_ID`
@@ -158,13 +213,11 @@ After initialization, normal Admin login uses only the stored owner password
 hash. Bootstrap mode is ignored even if it remains temporarily enabled, and
 `ADMIN_PASSWORD` remains rejected unless recovery mode is explicitly enabled.
 
-The owner credential defaults to `data/admin-owner-credential.json` and can be
-relocated with `BGH_ADMIN_CREDENTIAL_STORE_PATH`. The file contains a salted
-scrypt hash and session-generation material, never the plaintext password. It
-must be kept in durable server-only storage. Missing state permits bootstrap
-only during explicit bootstrap mode; malformed or unreadable state always
-fails closed and is not overwritten. Disable or remove bootstrap mode after
-successful initialization.
+The owner credential is stored in PostgreSQL as a salted scrypt hash and
+session-generation material, never the plaintext password. Missing state
+permits bootstrap only during explicit bootstrap mode; malformed or unreadable
+state always fails closed and is not overwritten. Disable or remove bootstrap
+mode after successful initialization.
 
 Authenticated owners can use **Change password** from the private Admin area.
 The action verifies the current owner password, rotates the stored credential

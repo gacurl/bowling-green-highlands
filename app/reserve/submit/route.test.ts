@@ -1,9 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import nodemailer from "nodemailer";
-import { chmod, mkdtemp } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import path from "node:path";
+import {
+  setDatabaseForTests,
+  type DatabaseAccess,
+} from "../../../lib/server/database";
+import {
+  createTestDatabase,
+  failDatabaseMutations,
+} from "../../../lib/test-support/postgres-test-database";
 import { POST } from "./route";
 import {
   CONFIRMATION_COOKIE_NAME,
@@ -115,38 +120,17 @@ function withEnvironment(runTest: () => Promise<void> | void) {
   };
 }
 
-function withAvailabilityStore(runTest: () => Promise<void> | void) {
+function withAvailabilityStore(
+  runTest: (database: DatabaseAccess) => Promise<void> | void,
+) {
   return async () => {
-    const previousStorePath = process.env.BGH_AVAILABILITY_STORE_PATH;
-    const previousRequestStorePath =
-      process.env.BGH_RESERVATION_REQUESTS_STORE_PATH;
-    const directory = await mkdtemp(path.join(tmpdir(), "bgh-submit-route-"));
-    const testStorePath = path.join(
-      directory,
-      "operator-availability-submit-route-test.json",
-    );
-    const requestStorePath = path.join(
-      directory,
-      "reservation-requests-submit-route-test.json",
-    );
-
-    process.env.BGH_AVAILABILITY_STORE_PATH = testStorePath;
-    process.env.BGH_RESERVATION_REQUESTS_STORE_PATH = requestStorePath;
+    const database = await createTestDatabase();
+    setDatabaseForTests(database);
 
     try {
-      await runTest();
+      await runTest(database);
     } finally {
-      if (previousStorePath === undefined) {
-        delete process.env.BGH_AVAILABILITY_STORE_PATH;
-      } else {
-        process.env.BGH_AVAILABILITY_STORE_PATH = previousStorePath;
-      }
-
-      if (previousRequestStorePath === undefined) {
-        delete process.env.BGH_RESERVATION_REQUESTS_STORE_PATH;
-      } else {
-        process.env.BGH_RESERVATION_REQUESTS_STORE_PATH = previousRequestStorePath;
-      }
+      setDatabaseForTests(null);
     }
   };
 }
@@ -259,21 +243,10 @@ test(
 test(
   "reservation persistence failures explain that the request was not saved",
   withAvailabilityStore(
-    withEnvironment(async () => {
-      const previousRequestStorePath =
-        process.env.BGH_RESERVATION_REQUESTS_STORE_PATH;
-      const directory = await mkdtemp(path.join(tmpdir(), "bgh-request-fail-"));
-      const unwritableDirectory = path.join(directory, "unwritable");
-      const unwritableStorePath = path.join(
-        unwritableDirectory,
-        "reservation-requests.json",
-      );
-
-      await chmod(directory, 0o500);
-      process.env.BGH_RESERVATION_REQUESTS_STORE_PATH = unwritableStorePath;
-
-      try {
+    async (database) =>
+      withEnvironment(async () => {
         await setOperatorDateAvailability(RESERVE_EXAMPLE_DATE, "available");
+        setDatabaseForTests(failDatabaseMutations(database));
 
         const sentEmails: SentEmail[] = [];
         mockEmailTransport(sentEmails);
@@ -284,17 +257,7 @@ test(
         assert.equal(readRedirectPath(response), "/reserve?error=persistence");
         assert.equal(response.headers.get("set-cookie"), null);
         assert.equal(sentEmails.length, 0);
-      } finally {
-        await chmod(directory, 0o700);
-
-        if (previousRequestStorePath === undefined) {
-          delete process.env.BGH_RESERVATION_REQUESTS_STORE_PATH;
-        } else {
-          process.env.BGH_RESERVATION_REQUESTS_STORE_PATH =
-            previousRequestStorePath;
-        }
-      }
-    }),
+      })(),
   ),
 );
 
