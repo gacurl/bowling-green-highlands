@@ -143,10 +143,10 @@ function mockEmailTransport(sentEmails: SentEmail[]) {
   })) as unknown) as typeof nodemailer.createTransport;
 }
 
-function mockFailingEmailTransport() {
+function mockFailingEmailTransport(error: unknown) {
   nodemailer.createTransport = ((() => ({
     sendMail: async () => {
-      throw new Error("SMTP unavailable");
+      throw error;
     },
   })) as unknown) as typeof nodemailer.createTransport;
 }
@@ -225,17 +225,95 @@ test(
   withAvailabilityStore(
     withEnvironment(async () => {
       await setOperatorDateAvailability(RESERVE_EXAMPLE_DATE, "available");
-      mockFailingEmailTransport();
+      const sentinelCredential = "smtp-password-sentinel";
+      const sentinelGuestData = "guest@example.com";
+      const smtpError = Object.assign(
+        new Error(`${sentinelCredential} ${sentinelGuestData}`),
+        {
+          code: "EAUTH",
+          response: `${sentinelCredential} ${sentinelGuestData}`,
+          responseCode: 535,
+        },
+      );
+      mockFailingEmailTransport(smtpError);
 
-      const response = await POST(createReservationRequest());
+      const loggedErrors: unknown[][] = [];
+      const originalConsoleError = console.error;
+      console.error = (...args: unknown[]) => {
+        loggedErrors.push(args);
+      };
 
-      assert.equal(response.status, 303);
-      assert.equal(readRedirectPath(response), "/reserve?error=delivery");
-      assert.equal(response.headers.get("set-cookie"), null);
+      try {
+        const response = await POST(createReservationRequest());
 
-      const reservationRequests = await readReservationRequests();
+        assert.equal(response.status, 303);
+        assert.equal(readRedirectPath(response), "/reserve?error=delivery");
+        assert.equal(response.headers.get("set-cookie"), null);
 
-      assert.equal(reservationRequests.length, 1);
+        const reservationRequests = await readReservationRequests();
+
+        assert.equal(reservationRequests.length, 1);
+        assert.deepEqual(loggedErrors, [
+          [
+            "reservation_email_delivery_failed",
+            {
+              category: "authentication",
+              responseCode: 535,
+              transportCode: "EAUTH",
+            },
+          ],
+        ]);
+        assert.doesNotMatch(JSON.stringify(loggedErrors), /smtp-password-sentinel/);
+        assert.doesNotMatch(JSON.stringify(loggedErrors), /guest@example\.com/);
+      } finally {
+        console.error = originalConsoleError;
+      }
+    }),
+  ),
+);
+
+test(
+  "delivery failure logging rejects arbitrary SMTP error metadata",
+  withAvailabilityStore(
+    withEnvironment(async () => {
+      await setOperatorDateAvailability(RESERVE_EXAMPLE_DATE, "available");
+      const sentinelCredential = "smtp://user:credential@private.example";
+      const sentinelGuestData = "Private Guest Notes";
+      mockFailingEmailTransport({
+        code: sentinelCredential,
+        message: sentinelGuestData,
+        response: `${sentinelCredential} ${sentinelGuestData}`,
+        responseCode: "535",
+        stack: sentinelCredential,
+      });
+
+      const loggedErrors: unknown[][] = [];
+      const originalConsoleError = console.error;
+      console.error = (...args: unknown[]) => {
+        loggedErrors.push(args);
+      };
+
+      try {
+        const response = await POST(createReservationRequest());
+
+        assert.equal(response.status, 303);
+        assert.equal(readRedirectPath(response), "/reserve?error=delivery");
+        assert.equal(response.headers.get("set-cookie"), null);
+        assert.equal((await readReservationRequests()).length, 1);
+        assert.deepEqual(loggedErrors, [
+          [
+            "reservation_email_delivery_failed",
+            {
+              category: "unknown",
+              transportCode: "unknown",
+            },
+          ],
+        ]);
+        assert.doesNotMatch(JSON.stringify(loggedErrors), /credential/);
+        assert.doesNotMatch(JSON.stringify(loggedErrors), /Private Guest Notes/);
+      } finally {
+        console.error = originalConsoleError;
+      }
     }),
   ),
 );
