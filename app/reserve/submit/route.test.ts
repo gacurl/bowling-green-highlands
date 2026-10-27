@@ -258,8 +258,9 @@ test(
             "reservation_email_delivery_failed",
             {
               category: "authentication",
+              code: "EAUTH",
               responseCode: 535,
-              transportCode: "EAUTH",
+              stage: "smtp_authentication",
             },
           ],
         ]);
@@ -305,7 +306,8 @@ test(
             "reservation_email_delivery_failed",
             {
               category: "unknown",
-              transportCode: "unknown",
+              code: "UNKNOWN",
+              stage: "send_mail",
             },
           ],
         ]);
