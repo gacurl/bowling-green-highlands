@@ -8,75 +8,16 @@ import {
   createConfirmationStateCookieValue,
   getConfirmationCookieSecret,
 } from "../../lib/confirmation-state";
-import { sendReservationRequestEmail } from "../../lib/reservation-email";
+import {
+  getReservationEmailFailureDiagnostic,
+  sendReservationRequestEmail,
+} from "../../lib/reservation-email";
 
 const BASIC_EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const CONFIGURATION_ERROR_QUERY = "/reserve?error=configuration";
 const PERSISTENCE_ERROR_QUERY = "/reserve?error=persistence";
 const VALIDATION_ERROR_QUERY = "/reserve?error=validation";
 const DELIVERY_ERROR_QUERY = "/reserve?error=delivery";
-
-const SMTP_ERROR_CATEGORY_BY_TRANSPORT_CODE = {
-  EAUTH: "authentication",
-  ECONNECTION: "connection",
-  ECONNREFUSED: "connection",
-  ECONNRESET: "connection",
-  EHOSTUNREACH: "connection",
-  ENETUNREACH: "connection",
-  ENOTFOUND: "connection",
-  ESOCKET: "connection",
-  ETIMEDOUT: "timeout",
-} as const;
-
-type SmtpErrorCategory =
-  | (typeof SMTP_ERROR_CATEGORY_BY_TRANSPORT_CODE)[keyof typeof SMTP_ERROR_CATEGORY_BY_TRANSPORT_CODE]
-  | "unknown";
-type SmtpTransportCode = keyof typeof SMTP_ERROR_CATEGORY_BY_TRANSPORT_CODE;
-
-function sanitizeSmtpError(error: unknown): {
-  category: SmtpErrorCategory;
-  transportCode: SmtpTransportCode | "unknown";
-  responseCode?: number;
-} {
-  let category: SmtpErrorCategory = "unknown";
-  let transportCode: SmtpTransportCode | "unknown" = "unknown";
-  let responseCode: number | undefined;
-
-  if (typeof error !== "object" || error === null) {
-    return { category, transportCode };
-  }
-
-  try {
-    const errorCode = (error as { code?: unknown }).code;
-    const smtpResponseCode = (error as { responseCode?: unknown }).responseCode;
-
-    if (
-      typeof errorCode === "string" &&
-      Object.prototype.hasOwnProperty.call(
-        SMTP_ERROR_CATEGORY_BY_TRANSPORT_CODE,
-        errorCode,
-      )
-    ) {
-      transportCode = errorCode as SmtpTransportCode;
-      category = SMTP_ERROR_CATEGORY_BY_TRANSPORT_CODE[transportCode];
-    }
-
-    if (
-      typeof smtpResponseCode === "number" &&
-      Number.isInteger(smtpResponseCode) &&
-      smtpResponseCode >= 200 &&
-      smtpResponseCode <= 599
-    ) {
-      responseCode = smtpResponseCode;
-    }
-  } catch {
-    return { category: "unknown", transportCode: "unknown" };
-  }
-
-  return responseCode === undefined
-    ? { category, transportCode }
-    : { category, transportCode, responseCode };
-}
 
 function readRequiredString(formData: FormData, key: string) {
   const value = formData.get(key);
@@ -160,7 +101,7 @@ export async function POST(request: Request) {
     } catch (error) {
       console.error(
         "reservation_email_delivery_failed",
-        sanitizeSmtpError(error),
+        getReservationEmailFailureDiagnostic(error),
       );
       return NextResponse.redirect(
         new URL(DELIVERY_ERROR_QUERY, request.url),
