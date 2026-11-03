@@ -3,13 +3,8 @@
 Purpose: enforce operating rules for Bowling Green Highlands.
 Prevent drift. Preserve simplicity. Keep work aligned to the real product.
 
-If instructions conflict:
-- direct user instruction
-- AGENTS.md
-- repo state
-- docs/codex/* continuity files
-
-docs/codex/* files are context-only unless the user explicitly promotes them.
+Use the Source-of-Truth Hierarchy below when instructions conflict.
+`docs/codex/*` files are continuity context, not authority, unless explicitly promoted by the user.
 
 ---
 
@@ -27,7 +22,7 @@ All implementation decisions must preserve:
 - operator-controlled availability
 - low cognitive load
 - MVP-first simplicity
-- one primary action per screen`
+- one primary action per screen
 
 ---
 
@@ -172,19 +167,54 @@ Do not introduce:
 
 ---
 
-## Workflow Discipline
+## Workflow Discipline — Mandatory Guardrails
 
-- one issue per branch
-- one concern per issue
-- explicit staging only
-- smoke test before completion
-- no mixed changes
+**One issue → one branch → one concern → one PR.** This is a gate, not a suggestion.
 
-Branch:
-`issue-X-Y-short-description`
+- Begin from synchronized `main` when opening a **new** issue branch; never switch away from an active issue merely to restart completed work.
+- Use the existing issue branch for follow-up work. Never mix unrelated changes.
+- Branch naming: `issue-X-Y-short-description` (use the issue's established naming convention).
+- Commit subject: `Issue X-Y: short description`.
+- The GitHub PR title must **exactly match the GitHub issue title**.
+- Do not change persistence, authentication, payments, deployment, or infrastructure within an unrelated issue.
+- Stage only named, authorized files. **Never use `git add .`, `git add -A`, or blanket staging**.
+- Do not commit, push, open a PR, or merge without the human's authorization at the applicable gate.
+- Respect protected `main`; never force-push.
 
-Commit:
-`Issue X-Y: short description`
+### Two-phase Codex gate
+
+1. **Prompt A — Inspect → Design → STOP.** Inspect only relevant files, identify minimal scope, propose a design, and await human approval. No implementation.
+2. **Prompt B — Implement → Test → STOP.** Implement only the approved scope, run focused tests, report changed files and outcomes, and await human review.
+
+If either phase was already completed, **do not repeat it**. Reconnaissance after Prompt B must be narrowly justified by a concrete unanswered question; it is not an automatic extra phase. The human, not Codex, manages branch creation and switching.
+
+### Validation gate — evidence, not ceremony
+
+- Verify affected behavior with focused tests and a meaningful smoke test before calling it done.
+- Use previously verified PASS results unless code or environment changes invalidate them.
+- Do **not** repeat passing tests, perform broad scans, dump huge diffs, or run expensive builds without a specific reason or required CI gate.
+- Distinguish code inspection, simulated/browser verification, real persistence, and CI results. Never label untested behavior PASS.
+- Confirm only the intended files are changed before staging; `git diff --check` and an appropriate concise change summary are sufficient when earlier review was completed.
+- On unexpected changes, failing tests, or unsafe environment ambiguity: **STOP** and report the specific blocker. Never hide or overwrite unrelated work.
+- CI, build, and security gates remain mandatory; do not weaken or bypass them to accelerate a PR.
+
+### Final handoff gate — exactly two deliverables
+
+**After** implementation, human review, and relevant testing have passed, give the user, in **one response**:
+
+1. **One consolidated `~~~bash` block** containing explicit `git add <authorized files>`, `git commit -m "Issue X-Y: ..."`, and `git push -u origin <issue-branch>` commands. No extra validation-only round trips unless a new risk has appeared. Do not run those commands yourself without authorization.
+2. **One copy-ready `~~~markdown` PR block** containing the **exact full issue title inside the block** (first line `# Issue X-Y: ...`), then the summary, `Closes #<GitHub issue number>`, actual validation evidence, scoped files, and any unverified limitations. Never put the title only outside the PR block.
+
+The PR title is not the commit subject unless they happen to be identical. Keep GitHub issue numbers (`#284`) distinct from issue identifiers (`8-28`). Do not invent PASS results.
+
+### Interaction and pacing gate
+
+- Maximum **two operational steps per response**, not two separate conversations for naturally coupled Git operations.
+- Keep a coherent operation consolidated. Do not split staging, commit, and push into repeated checkpoints after approval.
+- Use PASS/FAIL only for material validation or actual blockers; do not force a checkpoint after every shell command.
+- Ask for evidence only when it would change the next action. Do not ask for information already provided.
+- Prefer concise, copy-ready instructions and the shortest safe route to closure.
+- Preserve established fences: Git commands `~~~bash`; Codex prompts `~~~text`; GitHub issues, PR descriptions, and handoffs `~~~markdown`.
 
 ---
 
@@ -193,12 +223,15 @@ Commit:
 Before implementation:
 - the correct issue branch must already be checked out
 - Codex must work only on that branch
-- prompts should name the issue branch when relevant
+- prompts must identify the active issue and branch
+- respect the two-phase Codex gate above
 
 Codex must NOT:
 - create or switch branches
 - modify unrelated files
-- expand scope beyond the issue
+- expand scope beyond the approved issue
+- restart finished phases or invent repetitive validation gates
+- stage, commit, push, or open a PR without explicit authorization
 - treat docs/codex/* as more authoritative than AGENTS.md or repo state
 
 ---
@@ -252,6 +285,9 @@ Violation will break CI builds.
 - smoke test passes
 - CI risk is understood
 - scope matches the issue
+- authorized files only; temporary harnesses and debug changes removed
+- PR title exactly matches the issue and PR body includes `Closes #...`
+- required CI/security checks pass before merge
 
 ---
 
@@ -264,3 +300,5 @@ STOP if a change would:
 - weaken system truth
 - change persistence/auth/payment behavior without an issue
 - create drift between docs and actual product behavior
+- require bypassing CI/security, exposing secrets, or using a production database for local testing
+- violate the one-issue/one-branch/one-concern scope or the explicit-staging rule
