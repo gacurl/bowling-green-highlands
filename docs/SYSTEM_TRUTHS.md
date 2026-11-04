@@ -69,9 +69,13 @@ The UI and backend must never infer hidden availability from unrelated actions.
 
 ---
 
-## Day-level simplicity is intentional
+## Date-level simplicity is intentional
 
-The MVP uses day-level availability only.
+The MVP uses one operator-controlled availability record per date. An available
+date has one explicit time window used to validate preferred-time requests.
+
+A time window does not generate bookable slots, reserve capacity, confirm a
+reservation, or automatically reduce availability.
 
 The system intentionally avoids:
 

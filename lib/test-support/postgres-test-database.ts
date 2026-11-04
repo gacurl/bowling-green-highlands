@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { Pool } from "pg";
 import type {
@@ -7,6 +7,8 @@ import type {
   DatabaseQueryResult,
   DatabaseQueryable,
 } from "../server/database";
+
+const MIGRATION_PATTERN = /^\d{4}_[a-z0-9_]+\.sql$/;
 
 function getTestDatabaseUrl() {
   const databaseUrl = process.env.TEST_DATABASE_URL?.trim();
@@ -77,20 +79,21 @@ export async function createTestDatabase() {
 
   try {
     await adminPool.query(`CREATE SCHEMA "${schema}"`);
-    const migration = await readFile(
-      path.join(
-        process.cwd(),
-        "db",
-        "migrations",
-        "0001_durable_persistence.sql",
-      ),
-      "utf8",
-    );
+    const migrationsDirectory = path.join(process.cwd(), "db", "migrations");
+    const migrationFilenames = (await readdir(migrationsDirectory))
+      .filter((filename) => MIGRATION_PATTERN.test(filename))
+      .sort();
     const client = await adminPool.connect();
 
     try {
       await client.query(`SET search_path TO "${schema}"`);
-      await client.query(migration);
+      for (const migrationFilename of migrationFilenames) {
+        const migration = await readFile(
+          path.join(migrationsDirectory, migrationFilename),
+          "utf8",
+        );
+        await client.query(migration);
+      }
     } finally {
       client.release();
     }

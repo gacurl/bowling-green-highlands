@@ -553,7 +553,7 @@ test("database-scoped target ignores session and role spoofing", async (t) => {
         "SELECT count(*)::int AS count FROM bgh_schema_migrations",
       )
     ).rows[0].count,
-    1,
+    2,
   );
 });
 
@@ -570,10 +570,85 @@ test("confirmed Production target applies migrations", async (t) => {
     runtimeRole: environment.runtimeRole,
   });
 
-  assert.deepEqual(result, ["0001_durable_persistence.sql"]);
+  assert.deepEqual(result, [
+    "0001_durable_persistence.sql",
+    "0002_operator_availability_windows.sql",
+  ]);
   await assertEffectiveRuntimePrivileges(
     environment.pool,
     environment.runtimeRole,
+  );
+});
+
+test("availability windows migration backfills and constrains legacy rows", async (t) => {
+  const environment = await createMigrationEnvironment();
+  t.after(environment.cleanup);
+  const migrations = await loadMigrations();
+
+  assert.deepEqual(
+    migrations.map((migration) => migration.filename),
+    [
+      "0001_durable_persistence.sql",
+      "0002_operator_availability_windows.sql",
+    ],
+  );
+
+  await environment.pool.query(migrations[0].sql);
+  await environment.pool.query(`
+    INSERT INTO operator_availability (availability_date, mode)
+    VALUES
+      ('2026-06-14', 'available'),
+      ('2026-06-15', 'unavailable')
+  `);
+  await environment.pool.query(migrations[1].sql);
+
+  const rows = await environment.pool.query(`
+    SELECT
+      availability_date::text AS availability_date,
+      duration_minutes,
+      mode,
+      start_minute
+    FROM operator_availability
+    ORDER BY availability_date ASC
+  `);
+
+  assert.deepEqual(rows.rows, [
+    {
+      availability_date: "2026-06-14",
+      duration_minutes: 120,
+      mode: "available",
+      start_minute: 540,
+    },
+    {
+      availability_date: "2026-06-15",
+      duration_minutes: null,
+      mode: "unavailable",
+      start_minute: null,
+    },
+  ]);
+  await assert.rejects(
+    environment.pool.query(`
+      INSERT INTO operator_availability (
+        availability_date,
+        duration_minutes,
+        mode,
+        start_minute
+      )
+      VALUES ('2026-06-16', 15, 'available', 540)
+    `),
+    /operator_availability_valid_window/,
+  );
+  await assert.rejects(
+    environment.pool.query(`
+      INSERT INTO operator_availability (
+        availability_date,
+        duration_minutes,
+        mode,
+        start_minute
+      )
+      VALUES ('2026-06-17', 20, 'unavailable', 540)
+    `),
+    /operator_availability_valid_window/,
   );
 });
 
@@ -721,8 +796,14 @@ test("migrations are repeatable, serialized, and grant only runtime DML", async 
     }),
   ]);
 
-  assert.deepEqual(results[0], ["0001_durable_persistence.sql"]);
-  assert.deepEqual(results[1], ["0001_durable_persistence.sql"]);
+  assert.deepEqual(results[0], [
+    "0001_durable_persistence.sql",
+    "0002_operator_availability_windows.sql",
+  ]);
+  assert.deepEqual(results[1], [
+    "0001_durable_persistence.sql",
+    "0002_operator_availability_windows.sql",
+  ]);
   await environment.pool.query(`
     GRANT ALL PRIVILEGES
     ON admin_owner_credentials,
@@ -747,7 +828,7 @@ test("migrations are repeatable, serialized, and grant only runtime DML", async 
         "SELECT count(*)::int AS count FROM bgh_schema_migrations",
       )
     ).rows[0].count,
-    1,
+    2,
   );
   await assertEffectiveRuntimePrivileges(
     environment.pool,
@@ -826,7 +907,7 @@ test("changed migration checksums fail without changing applied state", async (t
         "SELECT count(*)::int AS count FROM bgh_schema_migrations",
       )
     ).rows[0].count,
-    1,
+    2,
   );
 });
 
