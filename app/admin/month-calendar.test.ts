@@ -3,13 +3,21 @@ import test from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
+  AVAILABILITY_DURATION_OPTIONS,
   buildCalendarWeeks,
+  formatClockTime,
+  formatDurationOption,
   formatSelectedDateCount,
+  formatStartTimeValue,
   getSelectableDates,
+  getSelectionWindowState,
   MonthCalendar,
+  parseStartTimeValue,
   saveSelectedDateAvailability,
+  type AvailabilityUpdate,
   updateSelectedDates,
 } from "./month-calendar";
+import type { OperatorAvailability } from "../../lib/operator-availability";
 
 const CALENDAR_MARKUP = renderToStaticMarkup(
   createElement(MonthCalendar, {
@@ -170,20 +178,89 @@ test("renders and formats the always-visible selected-date count", () => {
   assert.equal(formatSelectedDateCount(30), "30 dates selected");
 });
 
+test("provides valid duration choices and clear time labels", () => {
+  assert.equal(AVAILABILITY_DURATION_OPTIONS.length, 24);
+  assert.equal(AVAILABILITY_DURATION_OPTIONS[0], 20);
+  assert.equal(AVAILABILITY_DURATION_OPTIONS.at(-1), 480);
+  assert.equal(formatDurationOption(20), "20 minutes");
+  assert.equal(formatDurationOption(60), "1 hour");
+  assert.equal(formatDurationOption(80), "1 hour 20 minutes");
+  assert.equal(formatDurationOption(480), "8 hours");
+  assert.equal(parseStartTimeValue("09:20"), 560);
+  assert.equal(parseStartTimeValue("9:20"), null);
+  assert.equal(parseStartTimeValue("24:00"), null);
+  assert.equal(formatStartTimeValue(560), "09:20");
+  assert.equal(formatClockTime(560), "9:20 AM");
+  assert.equal(formatClockTime(17 * 60), "5:00 PM");
+  assert.equal(formatClockTime(24 * 60), "12:00 AM");
+});
+
+test("prefills only a common existing window", () => {
+  const availability: OperatorAvailability = {
+    "2026-11-01": {
+      durationMinutes: 120,
+      mode: "available",
+      startMinute: 540,
+    },
+    "2026-11-02": {
+      durationMinutes: 120,
+      mode: "available",
+      startMinute: 540,
+    },
+    "2026-11-03": {
+      durationMinutes: 80,
+      mode: "available",
+      startMinute: 600,
+    },
+    "2026-11-04": { mode: "unavailable" },
+  };
+
+  assert.deepEqual(getSelectionWindowState(availability, ["2026-11-01"]), {
+    durationMinutes: 120,
+    kind: "common",
+    startMinute: 540,
+  });
+  assert.deepEqual(
+    getSelectionWindowState(availability, ["2026-11-01", "2026-11-02"]),
+    {
+      durationMinutes: 120,
+      kind: "common",
+      startMinute: 540,
+    },
+  );
+  assert.deepEqual(
+    getSelectionWindowState(availability, ["2026-11-01", "2026-11-03"]),
+    { kind: "mixed" },
+  );
+  assert.deepEqual(
+    getSelectionWindowState(availability, ["2026-11-01", "2026-11-04"]),
+    { kind: "mixed" },
+  );
+  assert.deepEqual(
+    getSelectionWindowState(availability, ["2026-11-04", "2026-11-05"]),
+    { kind: "none" },
+  );
+});
+
 test("confirms every successful per-date availability save", async () => {
-  const attempts: Array<{ date: string; mode: string }> = [];
+  const attempts: Array<{ date: string; update: AvailabilityUpdate }> = [];
   const dates = ["2026-11-01", "2026-11-02", "2026-11-03"];
+  const update: AvailabilityUpdate = {
+    durationMinutes: 80,
+    mode: "available",
+    startMinute: 600,
+  };
 
   const result = await saveSelectedDateAvailability(
     dates,
-    "available",
-    async (date, mode) => {
-      attempts.push({ date, mode });
+    update,
+    async (date, savedUpdate) => {
+      attempts.push({ date, update: savedUpdate });
       return true;
     },
   );
 
-  assert.deepEqual(attempts, dates.map((date) => ({ date, mode: "available" })));
+  assert.deepEqual(attempts, dates.map((date) => ({ date, update })));
   assert.deepEqual(result, {
     confirmedDates: dates,
     unresolvedDates: [],
@@ -192,13 +269,18 @@ test("confirms every successful per-date availability save", async () => {
 
 test("stops after an uncertain partial save and retries only unresolved dates", async () => {
   const dates = ["2026-11-01", "2026-11-02", "2026-11-03"];
-  const firstAttempts: string[] = [];
+  const update: AvailabilityUpdate = {
+    durationMinutes: 160,
+    mode: "available",
+    startMinute: 620,
+  };
+  const firstAttempts: Array<{ date: string; update: AvailabilityUpdate }> = [];
 
   const firstResult = await saveSelectedDateAvailability(
     dates,
-    "unavailable",
-    async (date) => {
-      firstAttempts.push(date);
+    update,
+    async (date, savedUpdate) => {
+      firstAttempts.push({ date, update: savedUpdate });
       if (date === "2026-11-02") {
         throw new Error("Connection ended before confirmation");
       }
@@ -206,23 +288,29 @@ test("stops after an uncertain partial save and retries only unresolved dates", 
     },
   );
 
-  assert.deepEqual(firstAttempts, ["2026-11-01", "2026-11-02"]);
+  assert.deepEqual(firstAttempts, [
+    { date: "2026-11-01", update },
+    { date: "2026-11-02", update },
+  ]);
   assert.deepEqual(firstResult, {
     confirmedDates: ["2026-11-01"],
     unresolvedDates: ["2026-11-02", "2026-11-03"],
   });
 
-  const retryAttempts: string[] = [];
+  const retryAttempts: Array<{ date: string; update: AvailabilityUpdate }> = [];
   const retryResult = await saveSelectedDateAvailability(
     firstResult.unresolvedDates,
-    "unavailable",
-    async (date) => {
-      retryAttempts.push(date);
+    update,
+    async (date, savedUpdate) => {
+      retryAttempts.push({ date, update: savedUpdate });
       return true;
     },
   );
 
-  assert.deepEqual(retryAttempts, ["2026-11-02", "2026-11-03"]);
+  assert.deepEqual(retryAttempts, [
+    { date: "2026-11-02", update },
+    { date: "2026-11-03", update },
+  ]);
   assert.deepEqual(retryResult, {
     confirmedDates: ["2026-11-02", "2026-11-03"],
     unresolvedDates: [],
