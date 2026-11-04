@@ -171,7 +171,21 @@ Do not introduce:
 
 **One issue → one branch → one concern → one PR.** This is a gate, not a suggestion.
 
-- Begin from synchronized `main` when opening a **new** issue branch; never switch away from an active issue merely to restart completed work.
+### New issue startup — one uninterrupted handoff
+
+For a new issue, provide **one consolidated Git command block**, followed immediately by **Codex Prompt A in the same response**:
+
+~~~bash
+git switch main
+git pull --ff-only origin main
+git switch -c <issue-branch>
+~~~
+
+- Do not insert a routine PASS/FAIL checkpoint, approval request, or extra conversation between these commands and Prompt A.
+- The human runs the commands; Codex never creates or switches branches. Prompt A explicitly requires the correct branch and must not inspect if that prerequisite failed.
+- If a command fails, the human stops and reports the actual error; do not continue on an incorrect branch.
+- If the issue branch already exists or the issue is in progress, resume that branch rather than creating a duplicate or restarting phases.
+- Never switch away from active uncommitted work; preserve it first.
 - Use the existing issue branch for follow-up work. Never mix unrelated changes.
 - Branch naming: `issue-X-Y-short-description` (use the issue's established naming convention).
 - Commit subject: `Issue X-Y: short description`.
@@ -209,7 +223,7 @@ The PR title is not the commit subject unless they happen to be identical. Keep 
 
 ### Interaction and pacing gate
 
-- Maximum **two operational steps per response**, not two separate conversations for naturally coupled Git operations.
+- Maximum **two logical phases per response** where useful; do not count individual Git commands as separate steps. New-issue Git startup plus Codex Prompt A is one coherent handoff.
 - Keep a coherent operation consolidated. Do not split staging, commit, and push into repeated checkpoints after approval.
 - Use PASS/FAIL only for material validation or actual blockers; do not force a checkpoint after every shell command.
 - Ask for evidence only when it would change the next action. Do not ask for information already provided.
