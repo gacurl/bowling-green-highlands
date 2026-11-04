@@ -1,63 +1,135 @@
+import { readReservationRequests } from "../app/lib/reservation-requests";
 import { getAvailableSlots } from "./availability";
 import {
-  formatRequestedSlotValue,
-  parseRequestedSlotValue,
-} from "./requested-slot";
-import { readOperatorAvailability } from "./operator-availability";
-import { readReservationRequests } from "../app/lib/reservation-requests";
+  getOperatorDateAvailabilityWindow,
+  isOperatorAvailabilityDate,
+  readOperatorAvailability,
+} from "./operator-availability";
+import { parseRequestedSlotValue } from "./requested-slot";
+import { toMinutes, toTimeString } from "./slots";
 import type { Slot } from "./slots";
 
-export const RESERVE_EXAMPLE_START_TIME = "09:00";
-export const RESERVE_EXAMPLE_END_TIME = "11:00";
+export const PREFERRED_TIME_INCREMENT_MINUTES = 15;
 export const RESERVE_EXAMPLE_DATE = "2026-06-14";
 
-const EXISTING_RESERVATIONS: Slot[] = [
-  {
-    date: RESERVE_EXAMPLE_DATE,
-    startTime: "09:30",
-    endTime: "10:00",
-    status: "available",
-  },
-];
+export type ReserveDateOption = {
+  date: string;
+  endMinute: number;
+  startMinute: number;
+};
 
-export async function getReserveExampleSlots() {
+export async function getReserveDateOptions(): Promise<ReserveDateOption[]> {
   const operatorAvailability = await readOperatorAvailability();
-  const reservationRequests = await readReservationRequests();
-  const acceptedSlots = reservationRequests
-    .filter((requestRecord) => requestRecord.status === "accepted")
-    .map((requestRecord) => parseRequestedSlotValue(requestRecord.requestedDates))
-    .filter((slot): slot is Slot => slot !== null);
-  const availableDates = Object.entries(operatorAvailability)
-    .filter(([, dayAvailability]) => dayAvailability.mode === "available")
-    .map(([date]) => date)
-    .sort((firstDate, secondDate) => firstDate.localeCompare(secondDate));
 
-  return availableDates.flatMap((date) =>
-    getAvailableSlots(
-      date,
-      RESERVE_EXAMPLE_START_TIME,
-      RESERVE_EXAMPLE_END_TIME,
-      [...EXISTING_RESERVATIONS, ...acceptedSlots],
-      operatorAvailability,
-    ),
-  );
+  return Object.keys(operatorAvailability)
+    .sort((firstDate, secondDate) => firstDate.localeCompare(secondDate))
+    .flatMap((date) => {
+      const window = getOperatorDateAvailabilityWindow(
+        operatorAvailability,
+        date,
+      );
+
+      return window
+        ? [
+            {
+              date,
+              endMinute: window.endMinute,
+              startMinute: window.startMinute,
+            },
+          ]
+        : [];
+    });
 }
 
-export async function isReserveExampleSlotValue(slotValue: string) {
-  const parsedSlot = parseRequestedSlotValue(slotValue);
+// Retain the legacy payment-regression seam without using generated slots in
+// the public reservation flow. Its windows and reservations remain data-driven.
+export async function getReserveExampleSlots() {
+  const [operatorAvailability, reservationRequests] = await Promise.all([
+    readOperatorAvailability(),
+    readReservationRequests(),
+  ]);
+  const acceptedSlots: Slot[] = reservationRequests.flatMap((requestRecord) => {
+    const requestedSlot = parseRequestedSlotValue(requestRecord.requestedDates);
 
-  if (!parsedSlot) {
-    return false;
+    return requestRecord.status === "accepted" && requestedSlot?.endTime
+      ? [
+          {
+            date: requestedSlot.date,
+            endTime: requestedSlot.endTime,
+            startTime: requestedSlot.startTime,
+            status: "available" as const,
+          },
+        ]
+      : [];
+  });
+
+  return Object.keys(operatorAvailability)
+    .sort((firstDate, secondDate) => firstDate.localeCompare(secondDate))
+    .flatMap((date) => {
+      const window = getOperatorDateAvailabilityWindow(
+        operatorAvailability,
+        date,
+      );
+
+      return window
+        ? getAvailableSlots(
+            date,
+            toTimeString(window.startMinute),
+            toTimeString(window.endMinute),
+            acceptedSlots,
+            operatorAvailability,
+          )
+        : [];
+    });
+}
+
+export async function validatePreferredTimeRequest(
+  requestedDate: string,
+  preferredTime: string,
+): Promise<string | null> {
+  if (!isOperatorAvailabilityDate(requestedDate)) {
+    return null;
   }
 
-  const slots = await getReserveExampleSlots();
+  const preferredMinute = toMinutes(preferredTime);
 
-  return slots.some(
-    (slot) =>
-      slot.status === "available" &&
-      slot.date === parsedSlot.date &&
-      slot.startTime === parsedSlot.startTime &&
-      slot.endTime === parsedSlot.endTime &&
-      formatRequestedSlotValue(slot) === slotValue,
+  if (
+    preferredMinute === null ||
+    toTimeString(preferredMinute) !== preferredTime ||
+    preferredMinute % PREFERRED_TIME_INCREMENT_MINUTES !== 0
+  ) {
+    return null;
+  }
+
+  const [operatorAvailability, reservationRequests] = await Promise.all([
+    readOperatorAvailability(),
+    readReservationRequests(),
+  ]);
+  const window = getOperatorDateAvailabilityWindow(
+    operatorAvailability,
+    requestedDate,
   );
+
+  if (
+    !window ||
+    preferredMinute < window.startMinute ||
+    preferredMinute >= window.endMinute
+  ) {
+    return null;
+  }
+
+  const hasAcceptedConflict = reservationRequests.some((requestRecord) => {
+    if (requestRecord.status !== "accepted") {
+      return false;
+    }
+
+    const requestedSlot = parseRequestedSlotValue(requestRecord.requestedDates);
+
+    return (
+      requestedSlot?.date === requestedDate &&
+      requestedSlot.startTime === preferredTime
+    );
+  });
+
+  return hasAcceptedConflict ? null : `${requestedDate} ${preferredTime}`;
 }

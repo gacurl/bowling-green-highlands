@@ -6,15 +6,19 @@ import {
 } from "./server/database";
 import { createTestDatabase } from "./test-support/postgres-test-database";
 import {
-  getReserveExampleSlots,
-  isReserveExampleSlotValue,
-  RESERVE_EXAMPLE_DATE,
+  getReserveDateOptions,
+  validatePreferredTimeRequest,
 } from "./reserve-example-availability";
-import { setOperatorDateAvailability } from "./operator-availability";
+import {
+  setOperatorDateAvailability,
+  setOperatorDateAvailabilityWindow,
+} from "./operator-availability";
 import {
   createReservationRequestRecord,
   updateReservationRequestStatus,
 } from "../app/lib/reservation-requests";
+
+const TEST_DATE = "2026-06-14";
 
 async function withAvailabilityStore<T>(
   runTest: (database: DatabaseAccess) => Promise<T>,
@@ -29,138 +33,192 @@ async function withAvailabilityStore<T>(
   }
 }
 
-test("returns no public slots when the example date is blocked", async () => {
-  await withAvailabilityStore(async (storePath) => {
-    await setOperatorDateAvailability(
-      RESERVE_EXAMPLE_DATE,
-      "unavailable",
-      storePath,
+test("returns only configured available dates with their actual windows", async () => {
+  await withAvailabilityStore(async (database) => {
+    await setOperatorDateAvailabilityWindow(
+      "2026-11-29",
+      14 * 60,
+      2 * 60,
+      database,
+    );
+    await setOperatorDateAvailability("2026-11-30", "unavailable", database);
+    await setOperatorDateAvailabilityWindow(
+      "2026-11-28",
+      9 * 60,
+      4 * 60,
+      database,
     );
 
-    assert.deepEqual(await getReserveExampleSlots(), []);
+    assert.deepEqual(await getReserveDateOptions(), [
+      {
+        date: "2026-11-28",
+        endMinute: 13 * 60,
+        startMinute: 9 * 60,
+      },
+      {
+        date: "2026-11-29",
+        endMinute: 16 * 60,
+        startMinute: 14 * 60,
+      },
+    ]);
   });
 });
 
-test("returns no public slots when the example date is unconfigured", async () => {
-  await withAvailabilityStore(async () => {
-    assert.deepEqual(await getReserveExampleSlots(), []);
+test("returns no public dates when availability is unconfigured or blocked", async () => {
+  await withAvailabilityStore(async (database) => {
+    assert.deepEqual(await getReserveDateOptions(), []);
+
+    await setOperatorDateAvailability(TEST_DATE, "unavailable", database);
+
+    assert.deepEqual(await getReserveDateOptions(), []);
   });
 });
 
-test("returns public slots only after operator opens the example date", async () => {
-  await withAvailabilityStore(async (storePath) => {
-    await setOperatorDateAvailability(RESERVE_EXAMPLE_DATE, "available", storePath);
+test("accepts canonical quarter-hour starts inside the current window", async () => {
+  await withAvailabilityStore(async (database) => {
+    await setOperatorDateAvailabilityWindow(
+      TEST_DATE,
+      9 * 60,
+      4 * 60,
+      database,
+    );
 
-    const slots = await getReserveExampleSlots();
-
-    assert.ok(slots.some((slot) => slot.status === "available"));
+    for (const preferredTime of ["09:00", "09:15", "12:45"]) {
+      assert.equal(
+        await validatePreferredTimeRequest(TEST_DATE, preferredTime),
+        `${TEST_DATE} ${preferredTime}`,
+      );
+    }
   });
 });
 
-test("returns slots for multiple available dates", async () => {
-  await withAvailabilityStore(async (storePath) => {
-    await setOperatorDateAvailability("2026-06-14", "available", storePath);
-    await setOperatorDateAvailability("2026-06-15", "available", storePath);
+test("rejects malformed, non-quarter-hour, and out-of-window values", async () => {
+  await withAvailabilityStore(async (database) => {
+    await setOperatorDateAvailabilityWindow(
+      TEST_DATE,
+      9 * 60,
+      4 * 60,
+      database,
+    );
 
-    const slots = await getReserveExampleSlots();
-    const dates = Array.from(new Set(slots.map((slot) => slot.date)));
-
-    assert.deepEqual(dates, ["2026-06-14", "2026-06-15"]);
-    assert.ok(slots.some((slot) => slot.status === "available"));
+    for (const [date, preferredTime] of [
+      ["2026-02-30", "09:00"],
+      [TEST_DATE, "9:00"],
+      [TEST_DATE, "09:10"],
+      [TEST_DATE, "08:45"],
+      [TEST_DATE, "13:00"],
+      [TEST_DATE, "24:00"],
+    ]) {
+      assert.equal(await validatePreferredTimeRequest(date, preferredTime), null);
+    }
   });
 });
 
-test("rejects example slot values when the example date is blocked", async () => {
-  await withAvailabilityStore(async (storePath) => {
-    await setOperatorDateAvailability(
-      RESERVE_EXAMPLE_DATE,
-      "unavailable",
-      storePath,
+test("rejects unconfigured, blocked, and stale dates", async () => {
+  await withAvailabilityStore(async (database) => {
+    assert.equal(
+      await validatePreferredTimeRequest(TEST_DATE, "09:00"),
+      null,
+    );
+
+    await setOperatorDateAvailabilityWindow(
+      TEST_DATE,
+      9 * 60,
+      2 * 60,
+      database,
+    );
+    assert.equal(
+      await validatePreferredTimeRequest(TEST_DATE, "09:00"),
+      `${TEST_DATE} 09:00`,
+    );
+
+    await setOperatorDateAvailability(TEST_DATE, "unavailable", database);
+    assert.equal(
+      await validatePreferredTimeRequest(TEST_DATE, "09:00"),
+      null,
+    );
+  });
+});
+
+test("accepted legacy and preferred starts conflict while pending and declined do not", async () => {
+  await withAvailabilityStore(async (database) => {
+    await setOperatorDateAvailabilityWindow(
+      TEST_DATE,
+      9 * 60,
+      2 * 60,
+      database,
+    );
+    const legacyAccepted = await createReservationRequestRecord(
+      {
+        eventType: "farm_stay",
+        guestEmail: "legacy@example.com",
+        guestName: "Legacy Accepted",
+        requestNotes: "",
+        requestedDates: `${TEST_DATE} 09:00 to 09:30`,
+      },
+      database,
+    );
+    const preferredAccepted = await createReservationRequestRecord(
+      {
+        eventType: "retreat",
+        guestEmail: "preferred@example.com",
+        guestName: "Preferred Accepted",
+        requestNotes: "",
+        requestedDates: `${TEST_DATE} 09:15`,
+      },
+      database,
+    );
+    await createReservationRequestRecord(
+      {
+        eventType: "wedding",
+        guestEmail: "pending@example.com",
+        guestName: "Pending Guest",
+        requestNotes: "",
+        requestedDates: `${TEST_DATE} 09:30`,
+      },
+      database,
+    );
+    const declined = await createReservationRequestRecord(
+      {
+        eventType: "other",
+        guestEmail: "declined@example.com",
+        guestName: "Declined Guest",
+        requestNotes: "",
+        requestedDates: `${TEST_DATE} 09:45`,
+      },
+      database,
     );
 
     assert.equal(
-      await isReserveExampleSlotValue(`${RESERVE_EXAMPLE_DATE} 09:00 to 09:30`),
-      false,
-    );
-  });
-});
-
-test("rejects malformed slot value formats", async () => {
-  await withAvailabilityStore(async (storePath) => {
-    await setOperatorDateAvailability(RESERVE_EXAMPLE_DATE, "available", storePath);
-
-    assert.equal(
-      await isReserveExampleSlotValue(`${RESERVE_EXAMPLE_DATE} 9:00 to 09:30`),
-      false,
+      await updateReservationRequestStatus(
+        legacyAccepted.id,
+        "accepted",
+        database,
+      ),
+      "updated",
     );
     assert.equal(
-      await isReserveExampleSlotValue(`${RESERVE_EXAMPLE_DATE}T09:00 to 09:30`),
-      false,
+      await updateReservationRequestStatus(
+        preferredAccepted.id,
+        "accepted",
+        database,
+      ),
+      "updated",
     );
-    assert.equal(await isReserveExampleSlotValue("bad-value"), false);
-  });
-});
-
-test("excludes accepted request slots from public options", async () => {
-  await withAvailabilityStore(async (storePath) => {
-    await setOperatorDateAvailability(RESERVE_EXAMPLE_DATE, "available", storePath);
-    const acceptedRequest = await createReservationRequestRecord({
-      eventType: "farm_stay",
-      guestEmail: "accepted@example.com",
-      guestName: "Accepted Guest",
-      requestNotes: "",
-      requestedDates: `${RESERVE_EXAMPLE_DATE} 09:00 to 09:30`,
-    });
     assert.equal(
-      await updateReservationRequestStatus(acceptedRequest.id, "accepted"),
+      await updateReservationRequestStatus(declined.id, "declined", database),
       "updated",
     );
 
-    const slots = await getReserveExampleSlots();
-    const removedSlot = slots.find(
-      (slot) =>
-        slot.date === RESERVE_EXAMPLE_DATE &&
-        slot.startTime === "09:00" &&
-        slot.endTime === "09:30",
-    );
-
-    assert.equal(removedSlot?.status, "unavailable");
+    assert.equal(await validatePreferredTimeRequest(TEST_DATE, "09:00"), null);
+    assert.equal(await validatePreferredTimeRequest(TEST_DATE, "09:15"), null);
     assert.equal(
-      await isReserveExampleSlotValue(`${RESERVE_EXAMPLE_DATE} 09:00 to 09:30`),
-      false,
-    );
-  });
-});
-
-test("pending and declined request slots remain public options", async () => {
-  await withAvailabilityStore(async (storePath) => {
-    await setOperatorDateAvailability(RESERVE_EXAMPLE_DATE, "available", storePath);
-    await createReservationRequestRecord({
-      eventType: "farm_stay",
-      guestEmail: "pending@example.com",
-      guestName: "Pending Guest",
-      requestNotes: "",
-      requestedDates: `${RESERVE_EXAMPLE_DATE} 10:00 to 10:30`,
-    });
-    const declinedRequest = await createReservationRequestRecord({
-      eventType: "retreat",
-      guestEmail: "declined@example.com",
-      guestName: "Declined Guest",
-      requestNotes: "",
-      requestedDates: `${RESERVE_EXAMPLE_DATE} 10:30 to 11:00`,
-    });
-    assert.equal(
-      await updateReservationRequestStatus(declinedRequest.id, "declined"),
-      "updated",
-    );
-
-    assert.equal(
-      await isReserveExampleSlotValue(`${RESERVE_EXAMPLE_DATE} 10:00 to 10:30`),
-      true,
+      await validatePreferredTimeRequest(TEST_DATE, "09:30"),
+      `${TEST_DATE} 09:30`,
     );
     assert.equal(
-      await isReserveExampleSlotValue(`${RESERVE_EXAMPLE_DATE} 10:30 to 11:00`),
-      true,
+      await validatePreferredTimeRequest(TEST_DATE, "09:45"),
+      `${TEST_DATE} 09:45`,
     );
   });
 });

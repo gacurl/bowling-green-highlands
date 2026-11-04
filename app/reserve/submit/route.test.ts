@@ -15,14 +15,17 @@ import {
   readConfirmationStateCookieValue,
 } from "../../lib/confirmation-state";
 import {
-  getReserveExampleSlots,
-  RESERVE_EXAMPLE_DATE,
+  getReserveDateOptions,
 } from "../../../lib/reserve-example-availability";
 import {
+  createReservationRequestRecord,
   readReservationRequests,
   updateReservationRequestStatus,
 } from "../../lib/reservation-requests";
-import { setOperatorDateAvailability } from "../../../lib/operator-availability";
+import {
+  setOperatorDateAvailability,
+  setOperatorDateAvailabilityWindow,
+} from "../../../lib/operator-availability";
 
 type SentEmail = {
   from: string;
@@ -33,13 +36,15 @@ type SentEmail = {
 };
 
 const originalCreateTransport = nodemailer.createTransport;
+const TEST_DATE = "2026-06-14";
 
 function createReservationRequest(overrides: Record<string, string> = {}) {
   const formData = new URLSearchParams({
     eventType: "farm_stay",
     guestEmail: "guest@example.com",
     guestName: "Guest Name",
-    requestedDates: "2026-06-14 09:00 to 09:30",
+    preferredTime: "09:00",
+    requestedDate: TEST_DATE,
     requestNotes: "Please call first.",
     ...overrides,
   });
@@ -155,7 +160,7 @@ test(
   "valid reservation submissions redirect to confirmation and send email",
   withAvailabilityStore(
     withEnvironment(async () => {
-      await setOperatorDateAvailability(RESERVE_EXAMPLE_DATE, "available");
+      await setOperatorDateAvailability(TEST_DATE, "available");
 
       const sentEmails: SentEmail[] = [];
       mockEmailTransport(sentEmails);
@@ -177,7 +182,7 @@ test(
           eventType: "farm_stay",
           guestEmail: "guest@example.com",
           guestName: "Guest Name",
-          requestedDates: "2026-06-14 09:00 to 09:30",
+          requestedDates: "2026-06-14 09:00",
           requestNotes: "Please call first.",
         },
       );
@@ -195,7 +200,7 @@ test(
       assert.match(sentEmails[0].text, /- Event type: Farm stay/);
       assert.match(
         sentEmails[0].text,
-        /- Requested date and time: Sunday, June 14, 2026, 09:00 to 09:30/,
+        /- Requested date and time: Sunday, June 14, 2026, 09:00/,
       );
       assert.match(
         sentEmails[0].text,
@@ -211,7 +216,7 @@ test(
       assert.equal(reservationRequests[0].guestEmail, "guest@example.com");
       assert.equal(
         reservationRequests[0].requestedDates,
-        "2026-06-14 09:00 to 09:30",
+        "2026-06-14 09:00",
       );
       assert.equal(reservationRequests[0].requestNotes, "Please call first.");
       assert.match(reservationRequests[0].id, /^[0-9a-f-]{36}$/);
@@ -224,7 +229,7 @@ test(
   "delivery failures redirect to reserve delivery error",
   withAvailabilityStore(
     withEnvironment(async () => {
-      await setOperatorDateAvailability(RESERVE_EXAMPLE_DATE, "available");
+      await setOperatorDateAvailability(TEST_DATE, "available");
       const sentinelCredential = "smtp-password-sentinel";
       const sentinelGuestData = "guest@example.com";
       const smtpError = Object.assign(
@@ -277,7 +282,7 @@ test(
   "delivery failure logging rejects arbitrary SMTP error metadata",
   withAvailabilityStore(
     withEnvironment(async () => {
-      await setOperatorDateAvailability(RESERVE_EXAMPLE_DATE, "available");
+      await setOperatorDateAvailability(TEST_DATE, "available");
       const sentinelCredential = "smtp://user:credential@private.example";
       const sentinelGuestData = "Private Guest Notes";
       mockFailingEmailTransport({
@@ -325,7 +330,7 @@ test(
   withAvailabilityStore(
     async (database) =>
       withEnvironment(async () => {
-        await setOperatorDateAvailability(RESERVE_EXAMPLE_DATE, "available");
+        await setOperatorDateAvailability(TEST_DATE, "available");
         setDatabaseForTests(failDatabaseMutations(database));
 
         const sentEmails: SentEmail[] = [];
@@ -351,7 +356,7 @@ test(
       delete process.env.CONFIRMATION_COOKIE_SECRET;
 
       try {
-        await setOperatorDateAvailability(RESERVE_EXAMPLE_DATE, "available");
+        await setOperatorDateAvailability(TEST_DATE, "available");
 
         const sentEmails: SentEmail[] = [];
         mockEmailTransport(sentEmails);
@@ -371,24 +376,31 @@ test(
 );
 
 test(
-  "submit validation accepts the same available options shown publicly",
+  "submit validation accepts a preferred time for a publicly available date",
   withAvailabilityStore(
     withEnvironment(async () => {
-      await setOperatorDateAvailability(RESERVE_EXAMPLE_DATE, "available");
+      await setOperatorDateAvailability(TEST_DATE, "available");
 
       const sentEmails: SentEmail[] = [];
       mockEmailTransport(sentEmails);
-      const publicSlots = await getReserveExampleSlots();
-      const publicOption = publicSlots.find((slot) => slot.status === "available");
+      const [publicOption] = await getReserveDateOptions();
 
       assert.ok(publicOption);
 
-      const requestedDates = `${publicOption.date} ${publicOption.startTime} to ${publicOption.endTime}`;
-      const response = await POST(createReservationRequest({ requestedDates }));
+      const response = await POST(
+        createReservationRequest({
+          preferredTime: "09:15",
+          requestedDate: publicOption.date,
+        }),
+      );
 
       assert.equal(response.status, 303);
       assert.equal(readRedirectPath(response), "/confirmation");
       assert.equal(sentEmails.length, 1);
+      assert.equal(
+        (await readReservationRequests())[0].requestedDates,
+        `${TEST_DATE} 09:15`,
+      );
     }),
   ),
 );
@@ -402,15 +414,15 @@ test(
 
       const sentEmails: SentEmail[] = [];
       mockEmailTransport(sentEmails);
-      const publicSlots = await getReserveExampleSlots();
-      const secondDateOption = publicSlots.find(
-        (slot) => slot.status === "available" && slot.date === "2026-06-15",
+      const secondDateOption = (await getReserveDateOptions()).find(
+        (option) => option.date === "2026-06-15",
       );
 
       assert.ok(secondDateOption);
 
-      const requestedDates = `${secondDateOption.date} ${secondDateOption.startTime} to ${secondDateOption.endTime}`;
-      const response = await POST(createReservationRequest({ requestedDates }));
+      const response = await POST(
+        createReservationRequest({ requestedDate: secondDateOption.date }),
+      );
 
       assert.equal(response.status, 303);
       assert.equal(readRedirectPath(response), "/confirmation");
@@ -441,7 +453,7 @@ test(
   "blocked dates cannot be submitted",
   withAvailabilityStore(
     withEnvironment(async () => {
-      await setOperatorDateAvailability(RESERVE_EXAMPLE_DATE, "unavailable");
+      await setOperatorDateAvailability(TEST_DATE, "unavailable");
 
       const sentEmails: SentEmail[] = [];
       mockEmailTransport(sentEmails);
@@ -458,17 +470,40 @@ test(
 );
 
 test(
-  "unavailable public options cannot be submitted",
+  "window-end and out-of-window preferred times cannot be submitted",
   withAvailabilityStore(
     withEnvironment(async () => {
-      await setOperatorDateAvailability(RESERVE_EXAMPLE_DATE, "available");
+      await setOperatorDateAvailability(TEST_DATE, "available");
+
+      for (const preferredTime of ["08:45", "11:00"]) {
+        const sentEmails: SentEmail[] = [];
+        mockEmailTransport(sentEmails);
+        const response = await POST(
+          createReservationRequest({ preferredTime }),
+        );
+
+        assert.equal(response.status, 303);
+        assert.equal(readRedirectPath(response), "/reserve?error=validation");
+        assert.equal(response.headers.get("set-cookie"), null);
+        assert.equal(sentEmails.length, 0);
+        assert.deepEqual(await readReservationRequests(), []);
+      }
+    }),
+  ),
+);
+
+test(
+  "non-quarter-hour preferred times fail safely",
+  withAvailabilityStore(
+    withEnvironment(async () => {
+      await setOperatorDateAvailability(TEST_DATE, "available");
 
       const sentEmails: SentEmail[] = [];
       mockEmailTransport(sentEmails);
 
       const response = await POST(
         createReservationRequest({
-          requestedDates: "2026-06-14 09:30 to 10:00",
+          preferredTime: "09:10",
         }),
       );
 
@@ -482,18 +517,24 @@ test(
 );
 
 test(
-  "forged reservation options fail safely",
+  "stale preferred times are rejected if the configured window changes",
   withAvailabilityStore(
     withEnvironment(async () => {
-      await setOperatorDateAvailability(RESERVE_EXAMPLE_DATE, "available");
+      await setOperatorDateAvailability(TEST_DATE, "available");
+      const [publicOption] = await getReserveDateOptions();
+
+      assert.ok(publicOption);
+
+      await setOperatorDateAvailabilityWindow(
+        TEST_DATE,
+        10 * 60,
+        2 * 60,
+      );
 
       const sentEmails: SentEmail[] = [];
       mockEmailTransport(sentEmails);
-
       const response = await POST(
-        createReservationRequest({
-          requestedDates: "2026-06-14 08:30 to 09:00",
-        }),
+        createReservationRequest({ requestedDate: publicOption.date }),
       );
 
       assert.equal(response.status, 303);
@@ -506,62 +547,27 @@ test(
 );
 
 test(
-  "stale options are rejected if operator availability changes before submit",
+  "accepted legacy start-time conflicts are rejected before submit",
   withAvailabilityStore(
     withEnvironment(async () => {
-      await setOperatorDateAvailability(RESERVE_EXAMPLE_DATE, "available");
-      const publicSlots = await getReserveExampleSlots();
-      const publicOption = publicSlots.find((slot) => slot.status === "available");
-
-      assert.ok(publicOption);
-
-      await setOperatorDateAvailability(RESERVE_EXAMPLE_DATE, "unavailable");
-
-      const sentEmails: SentEmail[] = [];
-      mockEmailTransport(sentEmails);
-      const requestedDates = `${publicOption.date} ${publicOption.startTime} to ${publicOption.endTime}`;
-      const response = await POST(createReservationRequest({ requestedDates }));
-
-      assert.equal(response.status, 303);
-      assert.equal(readRedirectPath(response), "/reserve?error=validation");
-      assert.equal(response.headers.get("set-cookie"), null);
-      assert.equal(sentEmails.length, 0);
-      assert.deepEqual(await readReservationRequests(), []);
-    }),
-  ),
-);
-
-test(
-  "stale options are rejected if the slot is accepted before submit",
-  withAvailabilityStore(
-    withEnvironment(async () => {
-      await setOperatorDateAvailability(RESERVE_EXAMPLE_DATE, "available");
-      const publicSlots = await getReserveExampleSlots();
-      const publicOption = publicSlots.find((slot) => slot.status === "available");
-
-      assert.ok(publicOption);
-
-      const acceptedSeedResponse = await POST(
-        createReservationRequest({
-          guestEmail: "seed@example.com",
-          requestedDates: `${publicOption.date} ${publicOption.startTime} to ${publicOption.endTime}`,
-        }),
+      await setOperatorDateAvailability(TEST_DATE, "available");
+      const acceptedRequest = await createReservationRequestRecord(
+        {
+          eventType: "farm_stay",
+          guestEmail: "accepted@example.com",
+          guestName: "Accepted Guest",
+          requestNotes: "",
+          requestedDates: `${TEST_DATE} 09:00 to 09:30`,
+        },
       );
-      assert.equal(acceptedSeedResponse.status, 303);
-      const seededRequests = await readReservationRequests();
-      assert.equal(seededRequests.length, 1);
       assert.equal(
-        await updateReservationRequestStatus(seededRequests[0].id, "accepted"),
+        await updateReservationRequestStatus(acceptedRequest.id, "accepted"),
         "updated",
       );
 
       const sentEmails: SentEmail[] = [];
       mockEmailTransport(sentEmails);
-      const staleSubmitResponse = await POST(
-        createReservationRequest({
-          requestedDates: `${publicOption.date} ${publicOption.startTime} to ${publicOption.endTime}`,
-        }),
-      );
+      const staleSubmitResponse = await POST(createReservationRequest());
 
       assert.equal(staleSubmitResponse.status, 303);
       assert.equal(readRedirectPath(staleSubmitResponse), "/reserve?error=validation");
@@ -573,24 +579,27 @@ test(
 );
 
 test(
-  "malformed requested slot format is rejected",
+  "malformed preferred date and time formats are rejected",
   withAvailabilityStore(
     withEnvironment(async () => {
-      await setOperatorDateAvailability(RESERVE_EXAMPLE_DATE, "available");
+      await setOperatorDateAvailability(TEST_DATE, "available");
 
-      const sentEmails: SentEmail[] = [];
-      mockEmailTransport(sentEmails);
-      const response = await POST(
-        createReservationRequest({
-          requestedDates: "2026-06-14 9:00 to 09:30",
-        }),
-      );
+      const malformedOverrides: Record<string, string>[] = [
+        { preferredTime: "9:00" },
+        { requestedDate: "2026-02-30" },
+      ];
 
-      assert.equal(response.status, 303);
-      assert.equal(readRedirectPath(response), "/reserve?error=validation");
-      assert.equal(response.headers.get("set-cookie"), null);
-      assert.equal(sentEmails.length, 0);
-      assert.deepEqual(await readReservationRequests(), []);
+      for (const overrides of malformedOverrides) {
+        const sentEmails: SentEmail[] = [];
+        mockEmailTransport(sentEmails);
+        const response = await POST(createReservationRequest(overrides));
+
+        assert.equal(response.status, 303);
+        assert.equal(readRedirectPath(response), "/reserve?error=validation");
+        assert.equal(response.headers.get("set-cookie"), null);
+        assert.equal(sentEmails.length, 0);
+        assert.deepEqual(await readReservationRequests(), []);
+      }
     }),
   ),
 );
@@ -599,7 +608,7 @@ test(
   "legacy event type values are normalized before confirmation and email",
   withAvailabilityStore(
     withEnvironment(async () => {
-      await setOperatorDateAvailability(RESERVE_EXAMPLE_DATE, "available");
+      await setOperatorDateAvailability(TEST_DATE, "available");
 
       const sentEmails: SentEmail[] = [];
       mockEmailTransport(sentEmails);
@@ -621,7 +630,7 @@ test(
           eventType: "farm_stay",
           guestEmail: "guest@example.com",
           guestName: "Guest Name",
-          requestedDates: "2026-06-14 09:00 to 09:30",
+          requestedDates: "2026-06-14 09:00",
           requestNotes: "Please call first.",
         },
       );
@@ -629,7 +638,7 @@ test(
       assert.match(sentEmails[0].text, /- Event type: Farm stay/);
       assert.match(
         sentEmails[0].text,
-        /- Requested date and time: Sunday, June 14, 2026, 09:00 to 09:30/,
+        /- Requested date and time: Sunday, June 14, 2026, 09:00/,
       );
     }),
   ),
@@ -639,7 +648,7 @@ test(
   "unsupported event types are rejected",
   withAvailabilityStore(
     withEnvironment(async () => {
-      await setOperatorDateAvailability(RESERVE_EXAMPLE_DATE, "available");
+      await setOperatorDateAvailability(TEST_DATE, "available");
 
       const sentEmails: SentEmail[] = [];
       mockEmailTransport(sentEmails);
@@ -659,7 +668,7 @@ test(
   "invalid submission payloads fail safely",
   withAvailabilityStore(
     withEnvironment(async () => {
-      await setOperatorDateAvailability(RESERVE_EXAMPLE_DATE, "available");
+      await setOperatorDateAvailability(TEST_DATE, "available");
 
       const sentEmails: SentEmail[] = [];
       mockEmailTransport(sentEmails);
@@ -678,7 +687,7 @@ test(
   "missing required submission fields fail safely",
   withAvailabilityStore(
     withEnvironment(async () => {
-      await setOperatorDateAvailability(RESERVE_EXAMPLE_DATE, "available");
+      await setOperatorDateAvailability(TEST_DATE, "available");
 
       const sentEmails: SentEmail[] = [];
       mockEmailTransport(sentEmails);
