@@ -553,7 +553,7 @@ test("database-scoped target ignores session and role spoofing", async (t) => {
         "SELECT count(*)::int AS count FROM bgh_schema_migrations",
       )
     ).rows[0].count,
-    2,
+    3,
   );
 });
 
@@ -573,6 +573,7 @@ test("confirmed Production target applies migrations", async (t) => {
   assert.deepEqual(result, [
     "0001_durable_persistence.sql",
     "0002_operator_availability_windows.sql",
+    "0003_reservation_start_conflict_key.sql",
   ]);
   await assertEffectiveRuntimePrivileges(
     environment.pool,
@@ -590,6 +591,7 @@ test("availability windows migration backfills and constrains legacy rows", asyn
     [
       "0001_durable_persistence.sql",
       "0002_operator_availability_windows.sql",
+      "0003_reservation_start_conflict_key.sql",
     ],
   );
 
@@ -649,6 +651,234 @@ test("availability windows migration backfills and constrains legacy rows", asyn
       VALUES ('2026-06-17', 20, 'unavailable', 540)
     `),
     /operator_availability_valid_window/,
+  );
+});
+
+test("reservation conflict migration preserves raw values and enforces normalized starts", async (t) => {
+  const environment = await createMigrationEnvironment();
+  t.after(environment.cleanup);
+  const migrations = await loadMigrations();
+
+  await environment.pool.query(migrations[0].sql);
+  await environment.pool.query(`
+    INSERT INTO reservation_requests (
+      id,
+      created_at,
+      event_type,
+      guest_email,
+      guest_name,
+      request_notes,
+      requested_dates,
+      status
+    )
+    VALUES
+      (
+        'legacy-accepted',
+        '2026-06-14T08:00:00.000Z',
+        'farm_stay',
+        'legacy@example.com',
+        'Legacy Guest',
+        '',
+        '2026-06-14 09:00 to 09:30',
+        'accepted'
+      ),
+      (
+        'preferred-accepted',
+        '2026-06-14T08:05:00.000Z',
+        'retreat',
+        'preferred@example.com',
+        'Preferred Guest',
+        '',
+        '2026-06-14 10:00',
+        'accepted'
+      ),
+      (
+        'pending-match',
+        '2026-06-14T08:10:00.000Z',
+        'wedding',
+        'pending@example.com',
+        'Pending Guest',
+        '',
+        '2026-06-14 09:00',
+        'pending'
+      ),
+      (
+        'declined-match',
+        '2026-06-14T08:15:00.000Z',
+        'other',
+        'declined@example.com',
+        'Declined Guest',
+        '',
+        '2026-06-14 09:00',
+        'declined'
+      ),
+      (
+        'unrecognized-accepted',
+        '2026-06-14T08:20:00.000Z',
+        'other',
+        'unrecognized@example.com',
+        'Unrecognized Guest',
+        '',
+        'legacy free-form value',
+        'accepted'
+      )
+  `);
+
+  await environment.pool.query(migrations[2].sql);
+
+  const rows = await environment.pool.query(`
+    SELECT id, requested_dates, requested_start_key, status
+    FROM reservation_requests
+    ORDER BY sequence_id ASC
+  `);
+
+  assert.deepEqual(rows.rows, [
+    {
+      id: "legacy-accepted",
+      requested_dates: "2026-06-14 09:00 to 09:30",
+      requested_start_key: "2026-06-14 09:00",
+      status: "accepted",
+    },
+    {
+      id: "preferred-accepted",
+      requested_dates: "2026-06-14 10:00",
+      requested_start_key: "2026-06-14 10:00",
+      status: "accepted",
+    },
+    {
+      id: "pending-match",
+      requested_dates: "2026-06-14 09:00",
+      requested_start_key: "2026-06-14 09:00",
+      status: "pending",
+    },
+    {
+      id: "declined-match",
+      requested_dates: "2026-06-14 09:00",
+      requested_start_key: "2026-06-14 09:00",
+      status: "declined",
+    },
+    {
+      id: "unrecognized-accepted",
+      requested_dates: "legacy free-form value",
+      requested_start_key: "legacy free-form value",
+      status: "accepted",
+    },
+  ]);
+
+  const index = await environment.pool.query(`
+    SELECT pg_get_indexdef(
+      'reservation_requests_one_accepted_exact_slot'::regclass
+    ) AS definition
+  `);
+
+  assert.match(index.rows[0].definition, /UNIQUE INDEX/);
+  assert.match(index.rows[0].definition, /\(requested_start_key\)/);
+  assert.match(index.rows[0].definition, /status = 'accepted'/);
+  await assert.rejects(
+    environment.pool.query(`
+      INSERT INTO reservation_requests (
+        id,
+        created_at,
+        event_type,
+        guest_email,
+        guest_name,
+        request_notes,
+        requested_dates,
+        status
+      )
+      VALUES (
+        'duplicate-preferred',
+        '2026-06-14T08:25:00.000Z',
+        'farm_stay',
+        'duplicate@example.com',
+        'Duplicate Guest',
+        '',
+        '2026-06-14 09:00',
+        'accepted'
+      )
+    `),
+    /reservation_requests_one_accepted_exact_slot/,
+  );
+});
+
+test("reservation conflict migration rolls back atomically on accepted-key collisions", async (t) => {
+  const environment = await createMigrationEnvironment();
+  t.after(environment.cleanup);
+  const migrations = await loadMigrations();
+
+  await environment.pool.query(migrations[0].sql);
+  await environment.pool.query(`
+    INSERT INTO reservation_requests (
+      id,
+      created_at,
+      event_type,
+      guest_email,
+      guest_name,
+      request_notes,
+      requested_dates,
+      status
+    )
+    VALUES
+      (
+        'legacy-collision',
+        '2026-06-14T08:00:00.000Z',
+        'farm_stay',
+        'legacy-collision@example.com',
+        'Legacy Collision',
+        '',
+        '2026-06-14 09:00 to 09:30',
+        'accepted'
+      ),
+      (
+        'preferred-collision',
+        '2026-06-14T08:05:00.000Z',
+        'retreat',
+        'preferred-collision@example.com',
+        'Preferred Collision',
+        '',
+        '2026-06-14 09:00',
+        'accepted'
+      )
+  `);
+
+  const client = await environment.pool.connect();
+
+  try {
+    await client.query("BEGIN");
+    await assert.rejects(
+      client.query(migrations[2].sql),
+      /accepted reservations share a date\/start time/,
+    );
+    await client.query("ROLLBACK");
+  } finally {
+    client.release();
+  }
+
+  const generatedColumn = await environment.pool.query(`
+    SELECT column_name
+    FROM information_schema.columns
+    WHERE table_schema = current_schema()
+      AND table_name = 'reservation_requests'
+      AND column_name = 'requested_start_key'
+  `);
+  const originalIndex = await environment.pool.query(`
+    SELECT pg_get_indexdef(
+      'reservation_requests_one_accepted_exact_slot'::regclass
+    ) AS definition
+  `);
+  const acceptedRows = await environment.pool.query(`
+    SELECT requested_dates
+    FROM reservation_requests
+    WHERE status = 'accepted'
+    ORDER BY sequence_id ASC
+  `);
+
+  assert.deepEqual(generatedColumn.rows, []);
+  assert.match(originalIndex.rows[0].definition, /\(requested_dates\)/);
+  assert.doesNotMatch(originalIndex.rows[0].definition, /requested_start_key/);
+  assert.deepEqual(
+    acceptedRows.rows.map((row) => row.requested_dates),
+    ["2026-06-14 09:00 to 09:30", "2026-06-14 09:00"],
   );
 });
 
@@ -799,10 +1029,12 @@ test("migrations are repeatable, serialized, and grant only runtime DML", async 
   assert.deepEqual(results[0], [
     "0001_durable_persistence.sql",
     "0002_operator_availability_windows.sql",
+    "0003_reservation_start_conflict_key.sql",
   ]);
   assert.deepEqual(results[1], [
     "0001_durable_persistence.sql",
     "0002_operator_availability_windows.sql",
+    "0003_reservation_start_conflict_key.sql",
   ]);
   await environment.pool.query(`
     GRANT ALL PRIVILEGES
@@ -828,7 +1060,7 @@ test("migrations are repeatable, serialized, and grant only runtime DML", async 
         "SELECT count(*)::int AS count FROM bgh_schema_migrations",
       )
     ).rows[0].count,
-    2,
+    3,
   );
   await assertEffectiveRuntimePrivileges(
     environment.pool,
@@ -907,7 +1139,7 @@ test("changed migration checksums fail without changing applied state", async (t
         "SELECT count(*)::int AS count FROM bgh_schema_migrations",
       )
     ).rows[0].count,
-    2,
+    3,
   );
 });
 

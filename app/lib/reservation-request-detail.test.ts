@@ -37,6 +37,22 @@ test("returns null for an unknown request id", () => {
   assert.equal(requestDetailItem, null);
 });
 
+test("formats preferred-time request details for Admin display", () => {
+  const preferredTimeRequest: ReservationRequestRecord = {
+    ...requests[0],
+    requestedDates: "2026-06-14 09:00",
+  };
+  const requestDetailItem = toReservationRequestDetailItem(
+    [preferredTimeRequest],
+    preferredTimeRequest.id,
+  );
+
+  assert.equal(
+    requestDetailItem?.requestedSlotLabel,
+    "Sunday, June 14, 2026, 09:00",
+  );
+});
+
 test("returns a status-updated label when a timestamp is present", () => {
   const requestWithStatusUpdate: ReservationRequestRecord = {
     ...requests[0],

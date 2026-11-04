@@ -3,12 +3,12 @@ import { isOperatorAvailabilityDate } from "./operator-availability";
 
 type RequestedSlotValue = {
   date: string;
-  endTime: string;
+  endTime?: string;
   startTime: string;
 };
 
 const REQUESTED_SLOT_PATTERN =
-  /^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}) to (\d{2}:\d{2})$/;
+  /^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2})(?: to (\d{2}:\d{2}))?$/;
 
 function isIsoDate(value: string) {
   return isOperatorAvailabilityDate(value);
@@ -33,15 +33,24 @@ export function parseRequestedSlotValue(
 
   const [, date, startTime, endTime] = match;
 
-  if (!isIsoDate(date) || !isTime(startTime) || !isTime(endTime)) {
+  if (
+    !isIsoDate(date) ||
+    !isTime(startTime) ||
+    (endTime !== undefined && !isTime(endTime))
+  ) {
     return null;
   }
 
-  return {
+  const parsedValue: RequestedSlotValue = {
     date,
-    endTime,
     startTime,
   };
+
+  if (endTime !== undefined) {
+    parsedValue.endTime = endTime;
+  }
+
+  return parsedValue;
 }
 
 export function formatRequestedSlotLabel(requestedSlotValue: string) {
@@ -58,5 +67,9 @@ export function formatRequestedSlotLabel(requestedSlotValue: string) {
     year: "numeric",
   }).format(new Date(`${parsedSlotValue.date}T00:00:00`));
 
-  return `${friendlyDate}, ${parsedSlotValue.startTime} to ${parsedSlotValue.endTime}`;
+  const timeLabel = parsedSlotValue.endTime
+    ? `${parsedSlotValue.startTime} to ${parsedSlotValue.endTime}`
+    : parsedSlotValue.startTime;
+
+  return `${friendlyDate}, ${timeLabel}`;
 }

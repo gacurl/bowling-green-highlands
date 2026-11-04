@@ -45,3 +45,17 @@ test("formats event and requested slot labels for display", () => {
   );
   assert.equal(requestListItems[0].status, "pending");
 });
+
+test("formats preferred-time request labels for Admin display", () => {
+  const [requestListItem] = toReservationRequestListItems([
+    {
+      ...requests[0],
+      requestedDates: "2026-06-14 09:00",
+    },
+  ]);
+
+  assert.equal(
+    requestListItem.requestedSlotLabel,
+    "Sunday, June 14, 2026, 09:00",
+  );
+});
