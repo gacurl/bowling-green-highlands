@@ -1,0 +1,86 @@
+name: Milestone Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Exact package.json version in X.Y.Z form
+        required: true
+        type: string
+      commit_sha:
+        description: Full SHA of the current main commit deployed to Production
+        required: true
+        type: string
+      mode:
+        description: Validate safely or publish after approval
+        required: true
+        default: validate
+        type: choice
+        options:
+          - validate
+          - publish
+
+permissions: {}
+
+concurrency:
+  group: milestone-release
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate milestone release
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      deployments: read
+      statuses: read
+    outputs:
+      deployment_url: ${{ steps.validate.outputs.deployment_url }}
+      deployment_id: ${{ steps.validate.outputs.deployment_id }}
+      tag_name: ${{ steps.validate.outputs.tag_name }}
+
+    steps:
+      - name: Checkout current main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Validate release inputs and Production deployment
+        id: validate
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          RELEASE_COMMIT_SHA: ${{ inputs.commit_sha }}
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: node scripts/milestone-release.mjs validate
+
+  publish:
+    name: Approve and publish milestone release
+    if: ${{ inputs.mode == 'publish' }}
+    needs: validate
+    runs-on: ubuntu-latest
+    environment:
+      name: milestone-release
+      url: ${{ needs.validate.outputs.deployment_url }}
+    permissions:
+      actions: read
+      contents: write
+      deployments: read
+      statuses: read
+
+    steps:
+      - name: Checkout current main after approval
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Revalidate and publish milestone release
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          RELEASE_COMMIT_SHA: ${{ inputs.commit_sha }}
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: node scripts/milestone-release.mjs publish
