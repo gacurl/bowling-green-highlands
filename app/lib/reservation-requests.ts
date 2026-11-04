@@ -38,6 +38,7 @@ type ReservationRequestRow = {
   payment_status: ReservationPaymentStatus;
   request_notes: string;
   requested_dates: string;
+  requested_start_key: string;
   status: ReservationRequestStatus;
   status_updated_at: string | null;
 };
@@ -59,6 +60,7 @@ const RESERVATION_REQUEST_COLUMNS = `
   payment_status,
   request_notes,
   requested_dates,
+  requested_start_key,
   status,
   status_updated_at
 `;
@@ -214,11 +216,11 @@ export async function updateReservationRequestStatus(
   try {
     return await getDatabase(database).transaction(async (client) => {
       const requestResult = await client.query<{
-        requested_dates: string;
+        requested_start_key: string;
         status: ReservationRequestStatus;
       }>(
         `
-          SELECT requested_dates, status
+          SELECT requested_start_key, status
           FROM reservation_requests
           WHERE id = $1
           FOR UPDATE
@@ -238,7 +240,7 @@ export async function updateReservationRequestStatus(
       if (status === "accepted") {
         await client.query(
           "SELECT pg_advisory_xact_lock(hashtextextended($1, 261))",
-          [request.requested_dates],
+          [request.requested_start_key],
         );
         const conflict = await client.query(
           `
@@ -246,10 +248,10 @@ export async function updateReservationRequestStatus(
             FROM reservation_requests
             WHERE id <> $1
               AND status = 'accepted'
-              AND requested_dates = $2
+              AND requested_start_key = $2
             LIMIT 1
           `,
-          [requestId, request.requested_dates],
+          [requestId, request.requested_start_key],
         );
 
         if (conflict.rows.length > 0) {

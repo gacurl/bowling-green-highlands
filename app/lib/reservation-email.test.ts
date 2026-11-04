@@ -137,6 +137,31 @@ test(
       { contactEmail: "operator@example.com" },
     );
     assert.equal(sentEmails.length, 1);
+    assert.match(
+      String((sentEmails[0] as { text?: unknown }).text),
+      /Requested date and time: Sunday, June 14, 2026, 09:00 to 09:30/,
+    );
+  }),
+);
+
+test(
+  "preferred-time values retain email delivery formatting",
+  withEnvironment(async () => {
+    const sentEmails: unknown[] = [];
+    mockEmailTransport(async (email) => {
+      sentEmails.push(email);
+    });
+
+    await sendReservationRequestEmail({
+      ...reservationEmailInput,
+      requestedDates: "2026-06-14 09:00",
+    });
+
+    assert.equal(sentEmails.length, 1);
+    assert.match(
+      String((sentEmails[0] as { text?: unknown }).text),
+      /Requested date and time: Sunday, June 14, 2026, 09:00/,
+    );
   }),
 );
 

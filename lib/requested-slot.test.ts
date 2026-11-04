@@ -28,10 +28,18 @@ test("parses canonical requested slot values", () => {
   );
 });
 
+test("parses preferred-time requested values without inventing an end time", () => {
+  assert.deepEqual(parseRequestedSlotValue("2026-06-14 09:00"), {
+    date: "2026-06-14",
+    startTime: "09:00",
+  });
+});
+
 test("rejects malformed requested slot values", () => {
   assert.equal(parseRequestedSlotValue("2026-06-14 9:00 to 09:30"), null);
   assert.equal(parseRequestedSlotValue("2026/06/14 09:00 to 09:30"), null);
   assert.equal(parseRequestedSlotValue("2026-02-30 09:00 to 09:30"), null);
+  assert.equal(parseRequestedSlotValue("2026-06-14 09:00 to"), null);
   assert.equal(parseRequestedSlotValue("bad-value"), null);
 });
 
@@ -39,6 +47,13 @@ test("formats friendly requested slot labels", () => {
   assert.equal(
     formatRequestedSlotLabel("2026-06-14 09:00 to 09:30"),
     "Sunday, June 14, 2026, 09:00 to 09:30",
+  );
+});
+
+test("formats friendly preferred-time labels", () => {
+  assert.equal(
+    formatRequestedSlotLabel("2026-06-14 09:00"),
+    "Sunday, June 14, 2026, 09:00",
   );
 });
 

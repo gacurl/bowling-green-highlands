@@ -57,6 +57,44 @@ test("stores and reads pending reservation requests", async () => {
   assert.ok(!Number.isNaN(Date.parse(reservationRequests[1].createdAt)));
 });
 
+test("stores and reads preferred-time values without rewriting them", async () => {
+  const database = await createStorePath();
+  const request = await createReservationRequestRecord(
+    {
+      eventType: "farm_stay",
+      guestEmail: "preferred@example.com",
+      guestName: "Preferred Time Guest",
+      requestNotes: "",
+      requestedDates: "2026-06-14 09:00",
+    },
+    database,
+  );
+
+  assert.equal(
+    (await readReservationRequests(database))[0].requestedDates,
+    request.requestedDates,
+  );
+  assert.deepEqual(
+    (
+      await database.query<{
+        requested_dates: string;
+        requested_start_key: string;
+      }>(
+        `
+          SELECT requested_dates, requested_start_key
+          FROM reservation_requests
+          WHERE id = $1
+        `,
+        [request.id],
+      )
+    ).rows[0],
+    {
+      requested_dates: "2026-06-14 09:00",
+      requested_start_key: "2026-06-14 09:00",
+    },
+  );
+});
+
 test("updates a pending request to accepted", async () => {
   const storePath = await createStorePath();
   const requestRecord = await createReservationRequestRecord(
@@ -449,7 +487,7 @@ test("rejects duplicate request ids and rolls back the replacement", async () =>
   assert.deepEqual(await readReservationRequests(storePath), []);
 });
 
-test("blocks accepting a second pending request for the same requested slot", async () => {
+test("blocks a preferred-time request matching an accepted legacy start", async () => {
   const storePath = await createStorePath();
   const firstRequest = await createReservationRequestRecord(
     {
@@ -467,7 +505,7 @@ test("blocks accepting a second pending request for the same requested slot", as
       guestEmail: "second@example.com",
       guestName: "Second Guest",
       requestNotes: "",
-      requestedDates: "2026-07-01 09:00 to 09:30",
+      requestedDates: "2026-07-01 09:00",
     },
     storePath,
   );
@@ -493,6 +531,48 @@ test("blocks accepting a second pending request for the same requested slot", as
   assert.ok(blockedRequest);
   assert.equal(acceptedRequest.status, "accepted");
   assert.equal(blockedRequest.status, "pending");
+});
+
+test("database uniqueness blocks accepted legacy and preferred values with one start", async () => {
+  const database = await createStorePath();
+  const legacyRequest = await createReservationRequestRecord(
+    {
+      eventType: "farm_stay",
+      guestEmail: "legacy-unique@example.com",
+      guestName: "Legacy Unique Guest",
+      requestNotes: "",
+      requestedDates: "2026-07-06 09:00 to 09:30",
+    },
+    database,
+  );
+  const preferredRequest = await createReservationRequestRecord(
+    {
+      eventType: "retreat",
+      guestEmail: "preferred-unique@example.com",
+      guestName: "Preferred Unique Guest",
+      requestNotes: "",
+      requestedDates: "2026-07-06 09:00",
+    },
+    database,
+  );
+
+  assert.equal(
+    await updateReservationRequestStatus(legacyRequest.id, "accepted", database),
+    "updated",
+  );
+  await assert.rejects(
+    database.query(
+      "UPDATE reservation_requests SET status = 'accepted' WHERE id = $1",
+      [preferredRequest.id],
+    ),
+    /reservation_requests_one_accepted_exact_slot/,
+  );
+  assert.equal(
+    (await readReservationRequests(database)).find(
+      (request) => request.id === preferredRequest.id,
+    )?.status,
+    "pending",
+  );
 });
 
 test("accepting a pending request with a different slot still succeeds", async () => {
@@ -546,7 +626,7 @@ test("declining still works when another request for the same slot is accepted",
       guestEmail: "declined@example.com",
       guestName: "Declined Guest",
       requestNotes: "",
-      requestedDates: "2026-07-04 09:00 to 09:30",
+      requestedDates: "2026-07-04 09:00",
     },
     storePath,
   );
@@ -569,7 +649,7 @@ test("declining still works when another request for the same slot is accepted",
   assert.equal(updatedDeclinedRequest.status, "declined");
 });
 
-test("concurrent acceptance permits only one request for an exact slot", async () => {
+test("concurrent acceptance permits only one legacy or preferred request per start", async () => {
   const database = await createStorePath();
   const firstRequest = await createReservationRequestRecord(
     {
@@ -587,7 +667,7 @@ test("concurrent acceptance permits only one request for an exact slot", async (
       guestEmail: "second-concurrent@example.com",
       guestName: "Second Concurrent Guest",
       requestNotes: "",
-      requestedDates: "2026-07-05 09:00 to 09:30",
+      requestedDates: "2026-07-05 09:00",
     },
     database,
   );
