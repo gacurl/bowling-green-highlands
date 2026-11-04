@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { isReserveExampleSlotValue } from "../../../lib/reserve-example-availability";
+import { validatePreferredTimeRequest } from "../../../lib/reserve-example-availability";
 import { normalizeEventType } from "../../lib/event-type";
 import { createReservationRequestRecord } from "../../lib/reservation-requests";
 import {
@@ -46,15 +46,21 @@ export async function POST(request: Request) {
     const guestName = readRequiredString(formData, "guestName");
     const guestEmail = readRequiredString(formData, "guestEmail");
     const eventType = readRequiredString(formData, "eventType");
-    const requestedDates = readRequiredString(formData, "requestedDates");
+    const requestedDate = readRequiredString(formData, "requestedDate");
+    const preferredTime = readRequiredString(formData, "preferredTime");
     const requestNotes = readOptionalString(formData, "requestNotes");
 
     if (!isValidEmail(guestEmail)) {
       throw new Error("Invalid email address");
     }
 
-    if (!(await isReserveExampleSlotValue(requestedDates))) {
-      throw new Error("Invalid requested slot");
+    const requestedDates = await validatePreferredTimeRequest(
+      requestedDate,
+      preferredTime,
+    );
+
+    if (!requestedDates) {
+      throw new Error("Invalid preferred time request");
     }
 
     const normalizedEventType = normalizeEventType(eventType);
