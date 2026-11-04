@@ -4,7 +4,6 @@ import { useRef, useState } from "react";
 import type {
   OperatorAvailability,
   OperatorDayAvailability,
-  OperatorAvailabilityMode,
 } from "../../lib/operator-availability";
 
 const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -24,9 +23,17 @@ export type SelectedDatesAction =
   | { type: "clear" }
   | { type: "toggle"; date: string };
 
+export type AvailabilityUpdate =
+  | { mode: "unavailable" }
+  | {
+      durationMinutes: number;
+      mode: "available";
+      startMinute: number;
+    };
+
 type AvailabilityDateSaver = (
   date: string,
-  mode: OperatorAvailabilityMode,
+  update: AvailabilityUpdate,
 ) => Promise<boolean>;
 
 export type AvailabilitySaveResult = {
@@ -40,9 +47,73 @@ type AvailabilitySaveError = {
   unresolvedCount: number;
 };
 
+export type SelectionWindowState =
+  | { kind: "none" }
+  | { kind: "mixed" }
+  | {
+      durationMinutes: number;
+      kind: "common";
+      startMinute: number;
+    };
+
 const DEFAULT_DAY_AVAILABILITY: OperatorDayAvailability = {
   mode: "unavailable",
 };
+const DEFAULT_AVAILABILITY_START_MINUTE = 9 * 60;
+const DEFAULT_AVAILABILITY_DURATION_MINUTES = 2 * 60;
+const MIN_AVAILABILITY_DURATION_MINUTES = 20;
+const MAX_AVAILABILITY_DURATION_MINUTES = 8 * 60;
+
+export const AVAILABILITY_DURATION_OPTIONS = Array.from(
+  {
+    length:
+      MAX_AVAILABILITY_DURATION_MINUTES / MIN_AVAILABILITY_DURATION_MINUTES,
+  },
+  (_, index) => (index + 1) * MIN_AVAILABILITY_DURATION_MINUTES,
+);
+
+function isAvailabilityWindow(startMinute: number, durationMinutes: number) {
+  return (
+    Number.isInteger(startMinute) &&
+    startMinute >= 0 &&
+    startMinute < 24 * 60 &&
+    Number.isInteger(durationMinutes) &&
+    durationMinutes >= MIN_AVAILABILITY_DURATION_MINUTES &&
+    durationMinutes <= MAX_AVAILABILITY_DURATION_MINUTES &&
+    durationMinutes % MIN_AVAILABILITY_DURATION_MINUTES === 0 &&
+    startMinute + durationMinutes <= 24 * 60
+  );
+}
+
+function getAvailabilityEndMinute(
+  startMinute: number,
+  durationMinutes: number,
+) {
+  return isAvailabilityWindow(startMinute, durationMinutes)
+    ? startMinute + durationMinutes
+    : null;
+}
+
+function getDateAvailabilityWindow(
+  availability: OperatorAvailability,
+  date: string,
+) {
+  const dayAvailability = availability[date];
+
+  if (dayAvailability?.mode !== "available") {
+    return null;
+  }
+
+  const startMinute =
+    dayAvailability.startMinute ?? DEFAULT_AVAILABILITY_START_MINUTE;
+  const durationMinutes =
+    dayAvailability.durationMinutes ?? DEFAULT_AVAILABILITY_DURATION_MINUTES;
+  const endMinute = getAvailabilityEndMinute(startMinute, durationMinutes);
+
+  return endMinute === null
+    ? null
+    : { durationMinutes, endMinute, startMinute };
+}
 
 function startOfMonth(date: Date) {
   return new Date(date.getFullYear(), date.getMonth(), 1);
@@ -74,6 +145,89 @@ function formatSelectedDate(isoDate: string) {
     day: "numeric",
     year: "numeric",
   }).format(new Date(`${isoDate}T00:00:00`));
+}
+
+export function parseStartTimeValue(value: string) {
+  const match = /^(\d{2}):(\d{2})$/.exec(value);
+
+  if (!match) {
+    return null;
+  }
+
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+
+  if (hour < 0 || hour > 23 || minute < 0 || minute > 59) {
+    return null;
+  }
+
+  return hour * 60 + minute;
+}
+
+export function formatStartTimeValue(totalMinutes: number) {
+  const hour = Math.floor(totalMinutes / 60);
+  const minute = totalMinutes % 60;
+
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+}
+
+export function formatClockTime(totalMinutes: number) {
+  const normalizedMinutes = totalMinutes % (24 * 60);
+  const hour = Math.floor(normalizedMinutes / 60);
+  const minute = normalizedMinutes % 60;
+  const displayHour = hour % 12 || 12;
+  const period = hour < 12 ? "AM" : "PM";
+
+  return `${displayHour}:${String(minute).padStart(2, "0")} ${period}`;
+}
+
+export function formatDurationOption(durationMinutes: number) {
+  if (durationMinutes < 60) {
+    return `${durationMinutes} minutes`;
+  }
+
+  const hours = Math.floor(durationMinutes / 60);
+  const minutes = durationMinutes % 60;
+  const hourLabel = `${hours} ${hours === 1 ? "hour" : "hours"}`;
+
+  return minutes > 0 ? `${hourLabel} ${minutes} minutes` : hourLabel;
+}
+
+export function getSelectionWindowState(
+  availability: OperatorAvailability,
+  dates: string[],
+): SelectionWindowState {
+  if (dates.length === 0) {
+    return { kind: "none" };
+  }
+
+  const windows = dates.map((date) =>
+    getDateAvailabilityWindow(availability, date),
+  );
+
+  if (windows.every((window) => window === null)) {
+    return { kind: "none" };
+  }
+
+  const firstWindow = windows[0];
+
+  if (
+    !firstWindow ||
+    !windows.every(
+      (window) =>
+        window !== null &&
+        window.startMinute === firstWindow.startMinute &&
+        window.durationMinutes === firstWindow.durationMinutes,
+    )
+  ) {
+    return { kind: "mixed" };
+  }
+
+  return {
+    durationMinutes: firstWindow.durationMinutes,
+    kind: "common",
+    startMinute: firstWindow.startMinute,
+  };
 }
 
 function buildCalendarCells(monthDate: Date): CalendarCell[] {
@@ -154,14 +308,14 @@ export function formatSelectedDateCount(count: number) {
 
 export async function saveSelectedDateAvailability(
   dates: string[],
-  mode: OperatorAvailabilityMode,
+  update: AvailabilityUpdate,
   saveDate: AvailabilityDateSaver,
 ): Promise<AvailabilitySaveResult> {
   const confirmedDates: string[] = [];
 
   for (const date of dates) {
     try {
-      if (!(await saveDate(date, mode))) {
+      if (!(await saveDate(date, update))) {
         break;
       }
     } catch {
@@ -187,6 +341,12 @@ export function MonthCalendar({
   const [dayAvailability, setDayAvailability] =
     useState<Record<string, OperatorDayAvailability>>(initialAvailability);
   const [selectedDates, setSelectedDates] = useState<string[]>([]);
+  const [selectedStartTime, setSelectedStartTime] = useState("");
+  const [selectedDurationMinutes, setSelectedDurationMinutes] = useState<
+    number | null
+  >(null);
+  const [selectionWindowKind, setSelectionWindowKind] =
+    useState<SelectionWindowState["kind"]>("none");
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<AvailabilitySaveError | null>(
     null,
@@ -195,17 +355,76 @@ export function MonthCalendar({
   const calendarWeeks = buildCalendarWeeks(displayMonth);
   const monthDates = calendarWeeks.flatMap(getSelectableDates);
   const selectedCount = selectedDates.length;
+  const selectedStartMinute = parseStartTimeValue(selectedStartTime);
+  const selectedEndMinute =
+    selectedStartMinute !== null && selectedDurationMinutes !== null
+      ? getAvailabilityEndMinute(
+          selectedStartMinute,
+          selectedDurationMinutes,
+        )
+      : null;
+  const hasValidWindow = selectedEndMinute !== null;
   const selectedDateLabel =
     selectedCount === 1 ? formatSelectedDate(selectedDates[0]) : null;
   const selectedDayAvailability = selectedDateLabel
     ? dayAvailability[selectedDates[0]] ?? DEFAULT_DAY_AVAILABILITY
     : null;
+  const selectedDayWindow = selectedDateLabel
+    ? getDateAvailabilityWindow(
+        dayAvailability,
+        selectedDates[0],
+      )
+    : null;
   const selectedDayStateLabel =
-    selectedDayAvailability?.mode === "available" ? "Available" : "Blocked";
+    selectedDayAvailability?.mode === "available"
+      ? selectedDayWindow
+        ? `Available, ${formatClockTime(selectedDayWindow.startMinute)}–${formatClockTime(selectedDayWindow.endMinute)}`
+        : "Available"
+      : "Blocked";
 
-  async function updateSelectedDayAvailability(mode: OperatorAvailabilityMode) {
+  function setWindowDraftForDates(dates: string[]) {
+    const windowState = getSelectionWindowState(dayAvailability, dates);
+
+    setSelectionWindowKind(windowState.kind);
+
+    if (windowState.kind === "common") {
+      setSelectedStartTime(formatStartTimeValue(windowState.startMinute));
+      setSelectedDurationMinutes(windowState.durationMinutes);
+      return;
+    }
+
+    setSelectedStartTime("");
+    setSelectedDurationMinutes(null);
+  }
+
+  async function updateSelectedDayAvailability(
+    mode: AvailabilityUpdate["mode"],
+  ) {
     if (selectedCount === 0 || saveInProgress.current) {
       return;
+    }
+
+    let update: AvailabilityUpdate;
+
+    if (mode === "available") {
+      if (
+        selectedStartMinute === null ||
+        selectedDurationMinutes === null ||
+        !isAvailabilityWindow(
+          selectedStartMinute,
+          selectedDurationMinutes,
+        )
+      ) {
+        return;
+      }
+
+      update = {
+        durationMinutes: selectedDurationMinutes,
+        mode,
+        startMinute: selectedStartMinute,
+      };
+    } else {
+      update = { mode };
     }
 
     const datesToUpdate = [...selectedDates];
@@ -217,10 +436,10 @@ export function MonthCalendar({
     try {
       const result = await saveSelectedDateAvailability(
         datesToUpdate,
-        mode,
-        async (dateToUpdate, modeToSave) => {
+        update,
+        async (dateToUpdate, updateToSave) => {
           const response = await fetch("/admin/availability", {
-            body: JSON.stringify({ date: dateToUpdate, mode: modeToSave }),
+            body: JSON.stringify({ date: dateToUpdate, ...updateToSave }),
             headers: {
               "Content-Type": "application/json",
             },
@@ -235,7 +454,7 @@ export function MonthCalendar({
         setDayAvailability((current) => {
           const nextAvailability = { ...current };
           for (const confirmedDate of result.confirmedDates) {
-            nextAvailability[confirmedDate] = { mode };
+            nextAvailability[confirmedDate] = { ...update };
           }
           return nextAvailability;
         });
@@ -243,11 +462,23 @@ export function MonthCalendar({
 
       if (result.unresolvedDates.length > 0) {
         setSelectedDates(result.unresolvedDates);
+        setSelectionWindowKind(
+          getSelectionWindowState(
+            dayAvailability,
+            result.unresolvedDates,
+          ).kind,
+        );
         setSaveError({
           confirmedCount: result.confirmedDates.length,
           totalCount: datesToUpdate.length,
           unresolvedCount: result.unresolvedDates.length,
         });
+      } else if (update.mode === "available") {
+        setSelectionWindowKind("common");
+      } else {
+        setSelectionWindowKind("none");
+        setSelectedStartTime("");
+        setSelectedDurationMinutes(null);
       }
     } finally {
       saveInProgress.current = false;
@@ -260,8 +491,11 @@ export function MonthCalendar({
       return;
     }
 
+    const nextSelectedDates = updateSelectedDates(selectedDates, action);
+
     setSaveError(null);
-    setSelectedDates((current) => updateSelectedDates(current, action));
+    setSelectedDates(nextSelectedDates);
+    setWindowDraftForDates(nextSelectedDates);
   }
 
   function toggleSelectedDate(date: string | null) {
@@ -506,6 +740,83 @@ export function MonthCalendar({
               Clear selection
             </button>
           </div>
+          <div className="mt-5 grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <label
+                htmlFor="availability-start-time"
+                className="block text-sm font-medium text-[#2B2922]"
+              >
+                Start time
+              </label>
+              <input
+                id="availability-start-time"
+                type="time"
+                value={selectedStartTime}
+                onChange={(event) => {
+                  setSelectedStartTime(event.target.value);
+                  setSaveError(null);
+                }}
+                disabled={isSaving}
+                aria-describedby="availability-window-preview"
+                className="min-h-11 w-full rounded-2xl border border-[#CFC3AE] bg-white px-4 py-3 text-[#2B2922] outline-none transition focus:border-[#2F4A35] disabled:cursor-wait disabled:opacity-60"
+              />
+            </div>
+            <div className="space-y-2">
+              <label
+                htmlFor="availability-duration"
+                className="block text-sm font-medium text-[#2B2922]"
+              >
+                Duration
+              </label>
+              <select
+                id="availability-duration"
+                value={selectedDurationMinutes ?? ""}
+                onChange={(event) => {
+                  setSelectedDurationMinutes(
+                    event.target.value ? Number(event.target.value) : null,
+                  );
+                  setSaveError(null);
+                }}
+                disabled={isSaving}
+                aria-describedby="availability-window-preview"
+                className="min-h-11 w-full rounded-2xl border border-[#CFC3AE] bg-white px-4 py-3 text-[#2B2922] outline-none transition focus:border-[#2F4A35] disabled:cursor-wait disabled:opacity-60"
+              >
+                <option value="">Select duration</option>
+                {AVAILABILITY_DURATION_OPTIONS.map((durationMinutes) => (
+                  <option key={durationMinutes} value={durationMinutes}>
+                    {formatDurationOption(durationMinutes)}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+          {selectionWindowKind === "mixed" ? (
+            <p
+              role="status"
+              className="mt-4 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+            >
+              Selected dates have different availability. Choose one start
+              time and duration to replace it.
+            </p>
+          ) : null}
+          <p
+            id="availability-window-preview"
+            aria-live="polite"
+            aria-atomic="true"
+            className="mt-4 text-sm font-medium text-[#2B2922]"
+          >
+            {selectedEndMinute !== null && selectedStartMinute !== null ? (
+              <>
+                Available {formatClockTime(selectedStartMinute)}–
+                {formatClockTime(selectedEndMinute)}
+              </>
+            ) : selectedStartMinute !== null &&
+              selectedDurationMinutes !== null ? (
+              "Choose a window that ends before midnight."
+            ) : (
+              "Choose a start time and duration."
+            )}
+          </p>
           <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
             <button
               type="button"
@@ -518,7 +829,7 @@ export function MonthCalendar({
             <button
               type="button"
               onClick={() => updateSelectedDayAvailability("available")}
-              disabled={isSaving}
+              disabled={isSaving || !hasValidWindow}
               className="inline-flex min-h-11 w-full items-center justify-center rounded-full bg-[#2F4A35] px-4 py-3 text-sm font-medium text-[#FFF8EA] transition-colors hover:bg-[#B86748] disabled:cursor-wait disabled:opacity-60 sm:w-auto"
             >
               Mark selected available
