@@ -273,3 +273,54 @@ Release tags use `vX.Y.Z` and are created from the intended release commit on
 
 Production behavior changes include the appropriate Semantic Version bump in the
 same issue before merge.
+
+### Manual milestone releases
+
+Publish a milestone only after a meaningful, operator-approved set of changes is
+merged to `main`, Vercel has completed the exact Production deployment, and a
+human has verified the live Production behavior. A successful deployment record
+does not prove that the live domains serve that deployment or that smoke testing
+passed.
+
+Choose the version before merge and update both `package.json` and
+`package-lock.json` in the issue that changes Production behavior:
+
+- `PATCH` for a backward-compatible correction.
+- `MINOR` for backward-compatible functionality.
+- `MAJOR` for an intentional incompatible product or system change.
+
+The release workflow never changes or commits the version. Its `version` input
+must be the exact stable `X.Y.Z` value already present in both files, and its
+`commit_sha` input must be the full current `main` SHA.
+
+Before the first publication, a repository administrator must create the GitHub
+environment `milestone-release` with:
+
+- at least one required reviewer;
+- deployment branches limited to protected branches; and
+- **Prevent self-review** enabled when a second authorized reviewer is
+  available.
+
+Do not reuse or change the existing `Production` environment for this approval
+gate. The workflow verifies the required-reviewer rule and protected-branch
+policy and fails before publication if GitHub does not support or expose them.
+It does not fall back to an unprotected release.
+
+Run **Milestone Release** manually from `main`:
+
+1. Use `validate` first. It has read-only permissions and checks the version,
+   current `main` commit, duplicates, approval environment, and exact successful
+   Vercel Production deployment and commit status.
+2. Inspect the linked Vercel deployment and separately verify the live
+   Production domains and required smoke behavior.
+3. Run `publish` with the same version and SHA. The publication job waits for
+   `milestone-release` approval, revalidates after approval, creates an annotated
+   `vX.Y.Z` tag, publishes the GitHub Release, and verifies the tag resolves to
+   the approved commit.
+
+Validation never creates a tag or Release. If release publication fails after
+tag creation, the workflow removes only the exact tag created by that run and
+only after confirming no Release exists. If GitHub state cannot be confirmed,
+the workflow leaves the tag untouched and reports an ambiguous partial state.
+Inspect the tag and Release manually and reconcile that state before rerunning;
+never bypass the duplicate or approval checks.
