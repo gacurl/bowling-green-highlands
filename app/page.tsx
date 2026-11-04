@@ -47,6 +47,85 @@ export default async function Home() {
         </div>
       </section>
 
+      {/* Seasonal Christmas photo announcement: remove after November 29, 2026. */}
+      <section
+        aria-labelledby="christmas-photo-session-heading"
+        className="overflow-hidden rounded-3xl border border-[#D8CDBA] bg-[#FDF8EF] shadow-sm"
+      >
+        <div className="grid lg:grid-cols-[minmax(16rem,0.75fr)_minmax(0,1.25fr)] lg:items-center">
+          <div className="bg-[#F6F0E6] p-4 sm:p-6">
+            <Image
+              src="/images/christmas-highland-cow-photo-sessions-2026.webp"
+              alt="Christmas Pictures with the Highland Cows flyer showing two Highland cows in holiday decorations."
+              width={960}
+              height={1440}
+              className="mx-auto h-auto max-h-[32rem] w-auto max-w-full rounded-2xl object-contain"
+              sizes="(max-width: 1024px) calc(100vw - 64px), 360px"
+            />
+          </div>
+          <div className="space-y-5 p-5 sm:p-8">
+            <div className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#8B5E20]">
+                Seasonal photo event
+              </p>
+              <h2
+                id="christmas-photo-session-heading"
+                className="text-2xl font-semibold text-[#2B2922] sm:text-3xl"
+              >
+                Christmas Pictures with the Highland Cows
+              </h2>
+              <p className="text-sm leading-7 text-[#5F604E] sm:text-base">
+                Bring your camera and take your own Christmas pictures with the
+                Highland cows.
+              </p>
+            </div>
+
+            <dl className="grid gap-3 text-sm text-[#4F4B3F] sm:grid-cols-2">
+              <div className="rounded-2xl border border-[#D8CDBA] bg-white px-4 py-3">
+                <dt className="font-medium text-[#2B2922]">
+                  <time dateTime="2026-11-28">Saturday, November 28</time>
+                </dt>
+                <dd>
+                  <time dateTime="09:00">9 AM</time>–
+                  <time dateTime="13:00">1 PM</time>
+                </dd>
+              </div>
+              <div className="rounded-2xl border border-[#D8CDBA] bg-white px-4 py-3">
+                <dt className="font-medium text-[#2B2922]">
+                  <time dateTime="2026-11-29">Sunday, November 29</time>
+                </dt>
+                <dd>
+                  <time dateTime="14:00">2 PM</time>–
+                  <time dateTime="16:00">4 PM</time>
+                </dd>
+              </div>
+              <div className="rounded-2xl border border-[#D8CDBA] bg-white px-4 py-3">
+                <dt className="font-medium text-[#2B2922]">Photo time</dt>
+                <dd>15 minutes</dd>
+              </div>
+              <div className="rounded-2xl border border-[#D8CDBA] bg-white px-4 py-3">
+                <dt className="font-medium text-[#2B2922]">Price</dt>
+                <dd>$50 total</dd>
+              </div>
+            </dl>
+
+            <div className="space-y-3">
+              <Link
+                href="/reserve"
+                className="inline-flex min-h-11 w-full items-center justify-center rounded-full bg-[#2F4A35] px-6 py-3 text-sm font-semibold text-[#FFF8EA] transition-colors hover:bg-[#B86748] sm:w-auto"
+              >
+                Request a Christmas Photo Session
+              </Link>
+              <p className="max-w-xl text-sm leading-6 text-[#5F604E]">
+                Submitting sends a request only. Bowling Green Highlands will
+                review availability and follow up with next steps. Your session is
+                not confirmed when you submit.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <section className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr] lg:items-center">
         <div className="space-y-4">
           <h2 className="text-2xl font-semibold text-[#2B2922] sm:text-3xl">
