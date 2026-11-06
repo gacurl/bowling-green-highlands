@@ -1,4 +1,4 @@
-import { redirect } from "next/navigation";
+import { NextResponse } from "next/server";
 import {
   isReservationRequestStatusUpdate,
   updateReservationRequestStatus,
@@ -14,11 +14,17 @@ export async function POST(request: Request, { params }: StatusRouteProps) {
   const statusValue = formData.get("status");
 
   if (typeof statusValue !== "string") {
-    redirect(`/admin/requests/${requestId}?error=invalid_status`);
+    return NextResponse.redirect(
+      new URL(`/admin/requests/${requestId}?error=invalid_status`, request.url),
+      303,
+    );
   }
 
   if (!isReservationRequestStatusUpdate(statusValue)) {
-    redirect(`/admin/requests/${requestId}?error=invalid_status`);
+    return NextResponse.redirect(
+      new URL(`/admin/requests/${requestId}?error=invalid_status`, request.url),
+      303,
+    );
   }
 
   let updateResult: Awaited<ReturnType<typeof updateReservationRequestStatus>>;
@@ -26,20 +32,38 @@ export async function POST(request: Request, { params }: StatusRouteProps) {
   try {
     updateResult = await updateReservationRequestStatus(requestId, statusValue);
   } catch {
-    redirect(`/admin/requests/${requestId}?error=action_failed`);
+    return NextResponse.redirect(
+      new URL(`/admin/requests/${requestId}?error=action_failed`, request.url),
+      303,
+    );
   }
 
   if (updateResult === "not_found") {
-    redirect("/admin?error=request_not_found");
+    return NextResponse.redirect(
+      new URL("/admin?error=request_not_found", request.url),
+      303,
+    );
   }
 
   if (updateResult === "invalid_transition") {
-    redirect(`/admin/requests/${requestId}?error=invalid_transition`);
+    return NextResponse.redirect(
+      new URL(
+        `/admin/requests/${requestId}?error=invalid_transition`,
+        request.url,
+      ),
+      303,
+    );
   }
 
   if (updateResult === "slot_conflict") {
-    redirect(`/admin/requests/${requestId}?error=slot_conflict`);
+    return NextResponse.redirect(
+      new URL(`/admin/requests/${requestId}?error=slot_conflict`, request.url),
+      303,
+    );
   }
 
-  redirect(`/admin/requests/${requestId}`);
+  return NextResponse.redirect(
+    new URL(`/admin/requests/${requestId}`, request.url),
+    303,
+  );
 }
