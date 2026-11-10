@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { PageShell } from "../../../components/page-shell";
+import { getCheckoutReadiness } from "../../../lib/checkout-session";
 import { getRequestStatusErrorMessage } from "../../../lib/operational-error-messages";
 import { toReservationRequestDetailItem } from "../../../lib/reservation-request-detail";
 import {
@@ -8,6 +9,7 @@ import {
   getReservationRequestStatusLabel,
 } from "../../../lib/reservation-request-status";
 import { readReservationRequests } from "../../../lib/reservation-requests";
+import { getStripeCheckoutConfig } from "../../../lib/stripe-config";
 
 type RequestDetailPageProps = {
   params: Promise<{ requestId: string }>;
@@ -22,9 +24,14 @@ export default async function RequestDetailPage({
   const resolvedSearchParams = searchParams ? await searchParams : {};
   const errorMessage = getRequestStatusErrorMessage(resolvedSearchParams.error);
   const reservationRequests = await readReservationRequests();
+  const checkoutReadiness = getCheckoutReadiness({
+    appUrl: process.env.NEXT_PUBLIC_APP_URL,
+    hasStripeConfig: getStripeCheckoutConfig() !== null,
+  });
   const requestDetail = toReservationRequestDetailItem(
     reservationRequests,
     requestId,
+    checkoutReadiness,
   );
 
   if (!requestDetail) {
@@ -122,18 +129,24 @@ export default async function RequestDetailPage({
             <span>{errorMessage.body}</span>
           </p>
         ) : null}
-        {requestDetail.publicPaymentPath ? (
+        {requestDetail.publicPaymentUrl ? (
           <div className="mt-6 rounded-2xl border border-[#CFC3AE] bg-[#F6F0E6] px-4 py-3 text-sm text-[#4F4B3F]">
             <p className="font-medium text-[#2B2922]">
               Send this payment link to the customer.
             </p>
             <Link
-              href={requestDetail.publicPaymentPath}
+              href={requestDetail.publicPaymentUrl}
               className="mt-2 inline-flex break-all font-semibold text-[#2F4A35] underline underline-offset-4"
             >
-              {requestDetail.publicPaymentPath}
+              {requestDetail.publicPaymentUrl}
             </Link>
           </div>
+        ) : requestDetail.status === "accepted" ? (
+          <p className="mt-6 rounded-2xl border border-[#CFC3AE] bg-[#F6F0E6] px-4 py-3 text-sm text-[#4F4B3F]">
+            {requestDetail.paymentStatusLabel === "Paid"
+              ? "Payment is already marked paid. No payment link is needed."
+              : "A secure payment link is not available. Check the payment configuration before contacting the customer."}
+          </p>
         ) : null}
         {requestDetail.status === "pending" ? (
           <form
@@ -158,13 +171,11 @@ export default async function RequestDetailPage({
               Decline request
             </button>
           </form>
-        ) : (
+        ) : requestDetail.status === "declined" ? (
           <p className="mt-6 rounded-2xl border border-[#D8CDBA] bg-[#F6F0E6] px-4 py-3 text-sm text-[#4F4B3F]">
-            No action needed. This request is already{" "}
-            {getReservationRequestStatusLabel(requestDetail.status).toLowerCase()}
-            .
+            This request is declined. No payment link is available.
           </p>
-        )}
+        ) : null}
       </article>
     </PageShell>
   );

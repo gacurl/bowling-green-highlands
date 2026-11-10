@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { getCheckoutReadiness } from "./checkout-session";
 import { toReservationRequestDetailItem } from "./reservation-request-detail";
 import type { ReservationRequestRecord } from "./reservation-requests";
 
@@ -16,6 +17,17 @@ const requests: ReservationRequestRecord[] = [
   },
 ];
 
+function getHttpsCheckoutReadiness() {
+  const checkoutReadiness = getCheckoutReadiness({
+    appUrl: "https://example.com",
+    hasStripeConfig: true,
+  });
+
+  assert.ok(checkoutReadiness);
+
+  return checkoutReadiness;
+}
+
 test("returns a friendly request detail item for a known request id", () => {
   const requestDetailItem = toReservationRequestDetailItem(requests, "first-id");
 
@@ -28,7 +40,7 @@ test("returns a friendly request detail item for a known request id", () => {
   assert.equal(requestDetailItem.status, "pending");
   assert.equal(requestDetailItem.paymentStatusLabel, "Unpaid");
   assert.equal(requestDetailItem.statusUpdatedAtLabel, null);
-  assert.equal(requestDetailItem.publicPaymentPath, null);
+  assert.equal(requestDetailItem.publicPaymentUrl, null);
 });
 
 test("returns null for an unknown request id", () => {
@@ -63,38 +75,85 @@ test("returns a status-updated label when a timestamp is present", () => {
   const requestDetailItem = toReservationRequestDetailItem(
     [requestWithStatusUpdate],
     "updated-id",
+    getHttpsCheckoutReadiness(),
   );
 
   assert.ok(requestDetailItem);
   assert.equal(requestDetailItem.status, "accepted");
-  assert.equal(requestDetailItem.publicPaymentPath, "/pay/updated-id");
+  assert.equal(
+    requestDetailItem.publicPaymentUrl,
+    "https://example.com/pay/updated-id",
+  );
   assert.ok(requestDetailItem.statusUpdatedAtLabel);
 });
 
-test("only accepted request details expose a public payment path", () => {
+test("only accepted unpaid payment-ready requests expose a public payment URL", () => {
   const acceptedRequest: ReservationRequestRecord = {
     ...requests[0],
-    id: "accepted-id",
+    id: "accepted id/with?characters#",
     status: "accepted",
+  };
+  const paidRequest: ReservationRequestRecord = {
+    ...acceptedRequest,
+    id: "paid-id",
+    paymentStatus: "paid",
   };
   const declinedRequest: ReservationRequestRecord = {
     ...requests[0],
     id: "declined-id",
     status: "declined",
   };
+  const httpsCheckoutReadiness = getHttpsCheckoutReadiness();
+  const httpCheckoutReadiness = getCheckoutReadiness({
+    appUrl: "http://127.0.0.1:3000",
+    hasStripeConfig: true,
+  });
+
+  assert.ok(httpCheckoutReadiness);
 
   assert.equal(
-    toReservationRequestDetailItem([acceptedRequest], "accepted-id")
-      ?.publicPaymentPath,
-    "/pay/accepted-id",
+    toReservationRequestDetailItem(
+      [acceptedRequest],
+      acceptedRequest.id,
+      httpsCheckoutReadiness,
+    )?.publicPaymentUrl,
+    "https://example.com/pay/accepted%20id%2Fwith%3Fcharacters%23",
   );
   assert.equal(
-    toReservationRequestDetailItem([requests[0]], "first-id")?.publicPaymentPath,
+    toReservationRequestDetailItem([acceptedRequest], acceptedRequest.id)
+      ?.publicPaymentUrl,
     null,
   );
   assert.equal(
-    toReservationRequestDetailItem([declinedRequest], "declined-id")
-      ?.publicPaymentPath,
+    toReservationRequestDetailItem(
+      [acceptedRequest],
+      acceptedRequest.id,
+      httpCheckoutReadiness,
+    )?.publicPaymentUrl,
+    null,
+  );
+  assert.equal(
+    toReservationRequestDetailItem(
+      [paidRequest],
+      paidRequest.id,
+      httpsCheckoutReadiness,
+    )?.publicPaymentUrl,
+    null,
+  );
+  assert.equal(
+    toReservationRequestDetailItem(
+      [requests[0]],
+      "first-id",
+      httpsCheckoutReadiness,
+    )?.publicPaymentUrl,
+    null,
+  );
+  assert.equal(
+    toReservationRequestDetailItem(
+      [declinedRequest],
+      "declined-id",
+      httpsCheckoutReadiness,
+    )?.publicPaymentUrl,
     null,
   );
 });
@@ -107,8 +166,12 @@ test("labels paid request details as Paid", () => {
     status: "accepted",
   };
 
-  assert.equal(
-    toReservationRequestDetailItem([paidRequest], "paid-id")?.paymentStatusLabel,
-    "Paid",
+  const requestDetailItem = toReservationRequestDetailItem(
+    [paidRequest],
+    "paid-id",
+    getHttpsCheckoutReadiness(),
   );
+
+  assert.equal(requestDetailItem?.paymentStatusLabel, "Paid");
+  assert.equal(requestDetailItem?.publicPaymentUrl, null);
 });
