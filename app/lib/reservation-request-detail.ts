@@ -1,5 +1,7 @@
 import { formatRequestedSlotLabel } from "../../lib/requested-slot";
+import type { CheckoutReadiness } from "./checkout-session";
 import { getEventTypeLabel } from "./event-type";
+import { getCanonicalPaymentPath } from "./payment-page-content";
 import type {
   ReservationRequestRecord,
   ReservationRequestStatus,
@@ -12,7 +14,7 @@ export type ReservationRequestDetailItem = {
   guestName: string;
   id: string;
   paymentStatusLabel: "Paid" | "Unpaid";
-  publicPaymentPath: string | null;
+  publicPaymentUrl: string | null;
   requestNotes: string;
   requestedSlotLabel: string;
   status: ReservationRequestStatus;
@@ -22,6 +24,7 @@ export type ReservationRequestDetailItem = {
 export function toReservationRequestDetailItem(
   requests: ReservationRequestRecord[],
   requestId: string,
+  checkoutReadiness: CheckoutReadiness | null = null,
 ): ReservationRequestDetailItem | null {
   const request = requests.find((record) => record.id === requestId);
 
@@ -36,8 +39,12 @@ export function toReservationRequestDetailItem(
     guestName: request.guestName,
     id: request.id,
     paymentStatusLabel: request.paymentStatus === "paid" ? "Paid" : "Unpaid",
-    publicPaymentPath:
-      request.status === "accepted" ? `/pay/${encodeURIComponent(request.id)}` : null,
+    publicPaymentUrl:
+      request.status === "accepted" &&
+      request.paymentStatus !== "paid" &&
+      checkoutReadiness?.appOrigin.startsWith("https://")
+        ? `${checkoutReadiness.appOrigin}${getCanonicalPaymentPath(request.id)}`
+        : null,
     requestNotes: request.requestNotes,
     requestedSlotLabel: formatRequestedSlotLabel(request.requestedDates),
     status: request.status,
