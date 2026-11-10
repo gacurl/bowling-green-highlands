@@ -1,12 +1,30 @@
-import { redirect } from "next/navigation";
-import { createReservationCheckoutSession } from "../../../lib/checkout-session";
+import { NextResponse } from "next/server";
+import {
+  createReservationCheckoutSession,
+  type CheckoutSessionResult,
+} from "../../../lib/checkout-session";
 import { getStripeCheckoutClient } from "../../../lib/stripe-checkout";
 
 type CheckoutRouteProps = {
   params: Promise<{ requestId: string }>;
 };
 
-export async function POST(_request: Request, { params }: CheckoutRouteProps) {
+export function createCheckoutRedirectResponse(
+  requestUrl: string,
+  requestId: string,
+  checkoutResult: CheckoutSessionResult,
+) {
+  if (checkoutResult.kind !== "created") {
+    return NextResponse.redirect(
+      new URL(`/pay/${requestId}?checkout=unavailable`, requestUrl),
+      303,
+    );
+  }
+
+  return NextResponse.redirect(new URL(checkoutResult.url), 303);
+}
+
+export async function POST(request: Request, { params }: CheckoutRouteProps) {
   const { requestId } = await params;
   const stripeCheckout = getStripeCheckoutClient();
   const checkoutResult = await createReservationCheckoutSession({
@@ -19,9 +37,5 @@ export async function POST(_request: Request, { params }: CheckoutRouteProps) {
     requestId,
   });
 
-  if (checkoutResult.kind !== "created") {
-    redirect(`/pay/${requestId}?checkout=unavailable`);
-  }
-
-  redirect(checkoutResult.url);
+  return createCheckoutRedirectResponse(request.url, requestId, checkoutResult);
 }
