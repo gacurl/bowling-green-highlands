@@ -30,6 +30,7 @@ export type CheckoutSessionResult =
   | {
       kind: "unavailable";
       reason:
+        | "already_paid"
         | "checkout_failed"
         | "missing_config"
         | "not_accepted"
@@ -148,6 +149,13 @@ export async function createReservationCheckoutSession({
     return {
       kind: "unavailable",
       reason: "not_accepted",
+    };
+  }
+
+  if (reservationRequest.paymentStatus === "paid") {
+    return {
+      kind: "unavailable",
+      reason: "already_paid",
     };
   }
 
