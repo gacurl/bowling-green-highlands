@@ -126,7 +126,28 @@ test("Checkout readiness accepts and canonicalizes HTTP and HTTPS origins", () =
   );
 });
 
-test("accepted request can create a Checkout Session", async () => {
+test("accepted unpaid request can create a Checkout Session", async () => {
+  const fakeStripe = createFakeStripeSessionRecorder();
+  const unpaidAcceptedRequest: ReservationRequestRecord = {
+    ...acceptedRequest,
+    paymentStatus: "unpaid",
+  };
+  const result = await createReservationCheckoutSession({
+    appUrl: "https://example.com",
+    createSession: fakeStripe.createSession,
+    loadRequests: async () => [unpaidAcceptedRequest],
+    priceId: "price_configured",
+    requestId: "accepted-id",
+  });
+
+  assert.deepEqual(result, {
+    kind: "created",
+    url: "https://checkout.stripe.test/session",
+  });
+  assert.equal(fakeStripe.calls.length, 1);
+});
+
+test("legacy accepted request without payment status can create a Checkout Session", async () => {
   const fakeStripe = createFakeStripeSessionRecorder();
   const result = await createReservationCheckoutSession({
     appUrl: "https://example.com",
@@ -141,6 +162,28 @@ test("accepted request can create a Checkout Session", async () => {
     url: "https://checkout.stripe.test/session",
   });
   assert.equal(fakeStripe.calls.length, 1);
+});
+
+test("accepted paid request cannot create a Checkout Session", async () => {
+  const fakeStripe = createFakeStripeSessionRecorder();
+  const paidAcceptedRequest: ReservationRequestRecord = {
+    ...acceptedRequest,
+    id: "paid-id",
+    paymentStatus: "paid",
+  };
+  const result = await createReservationCheckoutSession({
+    appUrl: "https://example.com",
+    createSession: fakeStripe.createSession,
+    loadRequests: async () => [paidAcceptedRequest],
+    priceId: "price_configured",
+    requestId: "paid-id",
+  });
+
+  assert.deepEqual(result, {
+    kind: "unavailable",
+    reason: "already_paid",
+  });
+  assert.equal(fakeStripe.calls.length, 0);
 });
 
 test("pending, declined, and unknown requests cannot create Checkout Sessions", async () => {
