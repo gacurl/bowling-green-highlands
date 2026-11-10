@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { PageShell } from "../../components/page-shell";
+import { getCheckoutReadiness } from "../../lib/checkout-session";
 import { getEventTypeLabel } from "../../lib/event-type";
 import {
   getCanonicalPaymentPath,
@@ -21,9 +22,13 @@ export default async function PaymentPage({
 }: PaymentPageProps) {
   const { requestId } = await params;
   const resolvedSearchParams = searchParams ? await searchParams : {};
+  const checkoutReadiness = getCheckoutReadiness({
+    appUrl: process.env.NEXT_PUBLIC_APP_URL,
+    hasStripeConfig: getStripeCheckoutConfig() !== null,
+  });
   const paymentState = await getPaymentRequestState(
     requestId,
-    getStripeCheckoutConfig() !== null,
+    checkoutReadiness !== null,
   );
   const paymentAvailable = paymentState.kind === "available";
   const pageContent = getPaymentPageContent(

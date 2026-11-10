@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   createReservationCheckoutSession,
+  getCheckoutReadiness,
   type CheckoutSessionCreateParams,
 } from "./checkout-session";
 import type { ReservationRequestRecord } from "./reservation-requests";
@@ -45,6 +46,85 @@ function createFakeStripeSessionRecorder() {
     },
   };
 }
+
+test("Checkout readiness requires complete Stripe configuration and an application origin", () => {
+  assert.equal(
+    getCheckoutReadiness({
+      appUrl: "https://example.com",
+      hasStripeConfig: false,
+    }),
+    null,
+  );
+
+  for (const appUrl of [undefined, null, "", "   "]) {
+    assert.equal(
+      getCheckoutReadiness({
+        appUrl,
+        hasStripeConfig: true,
+      }),
+      null,
+    );
+  }
+});
+
+test("Checkout readiness rejects malformed, unsafe, and non-origin URLs", () => {
+  const invalidAppUrls = [
+    "not-a-url",
+    "https://",
+    "javascript:alert(1)",
+    "file:///tmp/bowling-green-highlands",
+    "ftp://example.com",
+    "https://user:password@example.com",
+    "https://@example.com",
+    "https://example.com/path",
+    "https://example.com/.",
+    "https://example.com?checkout=returned",
+    "https://example.com?",
+    "https://example.com#payment",
+    "https://example.com#",
+  ];
+
+  for (const appUrl of invalidAppUrls) {
+    assert.equal(
+      getCheckoutReadiness({
+        appUrl,
+        hasStripeConfig: true,
+      }),
+      null,
+      appUrl,
+    );
+  }
+});
+
+test("Checkout readiness accepts and canonicalizes HTTP and HTTPS origins", () => {
+  assert.deepEqual(
+    getCheckoutReadiness({
+      appUrl: " http://127.0.0.1:3000/ ",
+      hasStripeConfig: true,
+    }),
+    {
+      appOrigin: "http://127.0.0.1:3000",
+    },
+  );
+  assert.deepEqual(
+    getCheckoutReadiness({
+      appUrl: "https://EXAMPLE.com:443/",
+      hasStripeConfig: true,
+    }),
+    {
+      appOrigin: "https://example.com",
+    },
+  );
+  assert.deepEqual(
+    getCheckoutReadiness({
+      appUrl: "https://example.com:8443",
+      hasStripeConfig: true,
+    }),
+    {
+      appOrigin: "https://example.com:8443",
+    },
+  );
+});
 
 test("accepted request can create a Checkout Session", async () => {
   const fakeStripe = createFakeStripeSessionRecorder();
@@ -151,6 +231,29 @@ test("missing Stripe configuration fails closed", async () => {
       reason: "missing_config",
     },
   );
+  for (const appUrl of [
+    "not-a-url",
+    "javascript:alert(1)",
+    "https://user:password@example.com",
+    "https://example.com/path",
+    "https://example.com?",
+    "https://example.com#",
+  ]) {
+    assert.deepEqual(
+      await createReservationCheckoutSession({
+        appUrl,
+        createSession: fakeStripe.createSession,
+        loadRequests: async () => [acceptedRequest],
+        priceId: "price_configured",
+        requestId: "accepted-id",
+      }),
+      {
+        kind: "unavailable",
+        reason: "missing_config",
+      },
+      appUrl,
+    );
+  }
   assert.equal(fakeStripe.calls.length, 0);
 });
 
@@ -158,7 +261,7 @@ test("stored email, configured Price ID, and reservation ID are sent to Stripe",
   const fakeStripe = createFakeStripeSessionRecorder();
 
   await createReservationCheckoutSession({
-    appUrl: "https://example.com/",
+    appUrl: " https://EXAMPLE.com:443/ ",
     createSession: fakeStripe.createSession,
     loadRequests: async () => [acceptedRequest],
     priceId: "price_configured",
