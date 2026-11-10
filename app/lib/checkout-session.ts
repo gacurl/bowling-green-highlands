@@ -47,14 +47,61 @@ type CreateReservationCheckoutSessionInput = {
   loadRequests?: RequestLoader;
 };
 
-function normalizeAppUrl(appUrl: string | null | undefined) {
+type GetCheckoutReadinessInput = {
+  appUrl: string | null | undefined;
+  hasStripeConfig: boolean;
+};
+
+export type CheckoutReadiness = {
+  appOrigin: string;
+};
+
+export function getCheckoutReadiness({
+  appUrl,
+  hasStripeConfig,
+}: GetCheckoutReadinessInput): CheckoutReadiness | null {
+  if (!hasStripeConfig) {
+    return null;
+  }
+
   const trimmedAppUrl = appUrl?.trim();
 
   if (!trimmedAppUrl) {
     return null;
   }
 
-  return trimmedAppUrl.replace(/\/+$/, "");
+  const originMatch = /^(https?):\/\/([^/?#]+)\/?$/i.exec(trimmedAppUrl);
+
+  if (
+    !originMatch ||
+    originMatch[2].includes("@") ||
+    trimmedAppUrl.includes("\\")
+  ) {
+    return null;
+  }
+
+  let appUrlValue: URL;
+
+  try {
+    appUrlValue = new URL(trimmedAppUrl);
+  } catch {
+    return null;
+  }
+
+  if (
+    (appUrlValue.protocol !== "http:" && appUrlValue.protocol !== "https:") ||
+    appUrlValue.username !== "" ||
+    appUrlValue.password !== "" ||
+    appUrlValue.pathname !== "/" ||
+    appUrlValue.search !== "" ||
+    appUrlValue.hash !== ""
+  ) {
+    return null;
+  }
+
+  return {
+    appOrigin: appUrlValue.origin,
+  };
 }
 
 export async function createReservationCheckoutSession({
@@ -64,10 +111,13 @@ export async function createReservationCheckoutSession({
   requestId,
   loadRequests = readReservationRequests,
 }: CreateReservationCheckoutSessionInput): Promise<CheckoutSessionResult> {
-  const normalizedAppUrl = normalizeAppUrl(appUrl);
   const trimmedPriceId = priceId?.trim();
+  const checkoutReadiness = getCheckoutReadiness({
+    appUrl,
+    hasStripeConfig: createSession !== null && Boolean(trimmedPriceId),
+  });
 
-  if (!createSession || !normalizedAppUrl || !trimmedPriceId) {
+  if (!checkoutReadiness || !createSession || !trimmedPriceId) {
     return {
       kind: "unavailable",
       reason: "missing_config",
@@ -101,7 +151,7 @@ export async function createReservationCheckoutSession({
     };
   }
 
-  const paymentUrl = `${normalizedAppUrl}/pay/${encodeURIComponent(requestId)}`;
+  const paymentUrl = `${checkoutReadiness.appOrigin}/pay/${encodeURIComponent(requestId)}`;
   let session: { url: string | null };
 
   try {
