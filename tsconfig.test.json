@@ -15,6 +15,7 @@
     "lib/**/*.ts",
     "app/admin/**/*.ts",
     "app/lib/**/*.ts",
+    "app/pay/**/*.ts",
     "app/reserve/submit/**/*.ts"
   ],
   "exclude": ["node_modules", ".next", ".test-build"]

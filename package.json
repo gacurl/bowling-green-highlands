@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test": "rm -rf .test-build && tsc -p tsconfig.test.json && find .test-build -name '*.test.js' -print0 | xargs -0 env NODE_ENV=test node --require=./scripts/register-server-only-test.cjs --test && env NODE_ENV=test node --test scripts/*.test.mjs",
+    "test": "rm -rf .test-build && tsc -p tsconfig.test.json && env NODE_ENV=test node --require=./scripts/register-server-only-test.cjs --test '.test-build/**/*.test.js' && env NODE_ENV=test node --test scripts/*.test.mjs",
     "db:migrate": "node scripts/migrate-database.mjs",
     "lint": "eslint"
   },
