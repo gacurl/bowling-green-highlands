@@ -553,7 +553,7 @@ test("database-scoped target ignores session and role spoofing", async (t) => {
         "SELECT count(*)::int AS count FROM bgh_schema_migrations",
       )
     ).rows[0].count,
-    3,
+    4,
   );
 });
 
@@ -574,6 +574,7 @@ test("confirmed Production target applies migrations", async (t) => {
     "0001_durable_persistence.sql",
     "0002_operator_availability_windows.sql",
     "0003_reservation_start_conflict_key.sql",
+    "0004_stripe_checkout_session_guard.sql",
   ]);
   await assertEffectiveRuntimePrivileges(
     environment.pool,
@@ -592,6 +593,7 @@ test("availability windows migration backfills and constrains legacy rows", asyn
       "0001_durable_persistence.sql",
       "0002_operator_availability_windows.sql",
       "0003_reservation_start_conflict_key.sql",
+      "0004_stripe_checkout_session_guard.sql",
     ],
   );
 
@@ -882,6 +884,94 @@ test("reservation conflict migration rolls back atomically on accepted-key colli
   );
 });
 
+test("Checkout Session guard migration backfills safely and enforces session ownership", async (t) => {
+  const environment = await createMigrationEnvironment();
+  t.after(environment.cleanup);
+  const migrations = await loadMigrations();
+
+  for (const migration of migrations.slice(0, 3)) {
+    await environment.pool.query(migration.sql);
+  }
+  await environment.pool.query(`
+    INSERT INTO reservation_requests (
+      id,
+      created_at,
+      event_type,
+      guest_email,
+      guest_name,
+      request_notes,
+      requested_dates,
+      status
+    )
+    VALUES
+      (
+        'checkout-legacy-one',
+        '2026-06-14T08:00:00.000Z',
+        'farm_stay',
+        'legacy-one@example.com',
+        'Legacy One',
+        '',
+        '2026-09-01 09:00',
+        'accepted'
+      ),
+      (
+        'checkout-legacy-two',
+        '2026-06-14T08:05:00.000Z',
+        'retreat',
+        'legacy-two@example.com',
+        'Legacy Two',
+        '',
+        '2026-09-02 09:00',
+        'accepted'
+      )
+  `);
+
+  await environment.pool.query(migrations[3].sql);
+
+  const backfilled = await environment.pool.query(`
+    SELECT
+      id,
+      stripe_checkout_session_id,
+      stripe_checkout_session_retryable
+    FROM reservation_requests
+    ORDER BY sequence_id ASC
+  `);
+
+  assert.deepEqual(backfilled.rows, [
+    {
+      id: "checkout-legacy-one",
+      stripe_checkout_session_id: null,
+      stripe_checkout_session_retryable: false,
+    },
+    {
+      id: "checkout-legacy-two",
+      stripe_checkout_session_id: null,
+      stripe_checkout_session_retryable: false,
+    },
+  ]);
+  await assert.rejects(
+    environment.pool.query(`
+      UPDATE reservation_requests
+      SET stripe_checkout_session_retryable = TRUE
+      WHERE id = 'checkout-legacy-one'
+    `),
+    /reservation_requests_checkout_retryable_requires_session/,
+  );
+  await environment.pool.query(`
+    UPDATE reservation_requests
+    SET stripe_checkout_session_id = 'cs_test_unique'
+    WHERE id = 'checkout-legacy-one'
+  `);
+  await assert.rejects(
+    environment.pool.query(`
+      UPDATE reservation_requests
+      SET stripe_checkout_session_id = 'cs_test_unique'
+      WHERE id = 'checkout-legacy-two'
+    `),
+    /reservation_requests_stripe_checkout_session_id_unique/,
+  );
+});
+
 test("migration and runtime roles must be distinct", async (t) => {
   const environment = await createMigrationEnvironment({
     branchMarker: TEST_PRODUCTION_BRANCH_ID,
@@ -1030,11 +1120,13 @@ test("migrations are repeatable, serialized, and grant only runtime DML", async 
     "0001_durable_persistence.sql",
     "0002_operator_availability_windows.sql",
     "0003_reservation_start_conflict_key.sql",
+    "0004_stripe_checkout_session_guard.sql",
   ]);
   assert.deepEqual(results[1], [
     "0001_durable_persistence.sql",
     "0002_operator_availability_windows.sql",
     "0003_reservation_start_conflict_key.sql",
+    "0004_stripe_checkout_session_guard.sql",
   ]);
   await environment.pool.query(`
     GRANT ALL PRIVILEGES
@@ -1060,7 +1152,7 @@ test("migrations are repeatable, serialized, and grant only runtime DML", async 
         "SELECT count(*)::int AS count FROM bgh_schema_migrations",
       )
     ).rows[0].count,
-    3,
+    4,
   );
   await assertEffectiveRuntimePrivileges(
     environment.pool,
@@ -1139,7 +1231,7 @@ test("changed migration checksums fail without changing applied state", async (t
         "SELECT count(*)::int AS count FROM bgh_schema_migrations",
       )
     ).rows[0].count,
-    3,
+    4,
   );
 });
 

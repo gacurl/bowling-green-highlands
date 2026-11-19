@@ -1,5 +1,11 @@
-import { readReservationRequests } from "./reservation-requests";
-import type { ReservationRequestRecord } from "./reservation-requests";
+import { createHash } from "node:crypto";
+import {
+  withLockedReservationCheckoutRequest,
+  type ReservationCheckoutLockResult,
+  type ReservationCheckoutOperation,
+  type ReservationCheckoutOperationResult,
+  type ReservationCheckoutRequest,
+} from "./reservation-requests";
 
 export type CheckoutSessionCreateParams = {
   cancel_url: string;
@@ -18,9 +24,21 @@ export type CheckoutSessionCreateParams = {
   success_url: string;
 };
 
+export type StripeCheckoutSession = {
+  id: string;
+  payment_status: string;
+  status: string | null;
+  url: string | null;
+};
+
 export type CheckoutSessionCreator = (
   params: CheckoutSessionCreateParams,
-) => Promise<{ url: string | null }>;
+  idempotencyKey: string,
+) => Promise<StripeCheckoutSession>;
+
+export type CheckoutSessionRetriever = (
+  sessionId: string,
+) => Promise<StripeCheckoutSession>;
 
 export type CheckoutSessionResult =
   | {
@@ -35,17 +53,22 @@ export type CheckoutSessionResult =
         | "missing_config"
         | "not_accepted"
         | "not_found"
+        | "payment_pending"
         | "unreadable";
     };
 
-type RequestLoader = () => Promise<ReservationRequestRecord[]>;
+type CheckoutRequestLocker = <Result>(
+  requestId: string,
+  operation: ReservationCheckoutOperation<Result>,
+) => Promise<ReservationCheckoutLockResult<Result>>;
 
 type CreateReservationCheckoutSessionInput = {
   appUrl: string | null | undefined;
   createSession: CheckoutSessionCreator | null;
+  lockRequest?: CheckoutRequestLocker;
   priceId: string | null | undefined;
   requestId: string;
-  loadRequests?: RequestLoader;
+  retrieveSession: CheckoutSessionRetriever | null;
 };
 
 type GetCheckoutReadinessInput = {
@@ -56,6 +79,34 @@ type GetCheckoutReadinessInput = {
 export type CheckoutReadiness = {
   appOrigin: string;
 };
+
+function unavailable(
+  reason: Extract<CheckoutSessionResult, { kind: "unavailable" }>["reason"],
+): CheckoutSessionResult {
+  return {
+    kind: "unavailable",
+    reason,
+  };
+}
+
+function resultOnly(
+  result: CheckoutSessionResult,
+): ReservationCheckoutOperationResult<CheckoutSessionResult> {
+  return { result };
+}
+
+function getCheckoutIdempotencyKey(
+  requestId: string,
+  predecessorSessionId: string | null,
+) {
+  const attemptIdentity = predecessorSessionId
+    ? `${requestId}\0after\0${predecessorSessionId}`
+    : `${requestId}\0initial`;
+
+  return `bgh-checkout-v1-${createHash("sha256")
+    .update(attemptIdentity)
+    .digest("hex")}`;
+}
 
 export function getCheckoutReadiness({
   appUrl,
@@ -105,96 +156,181 @@ export function getCheckoutReadiness({
   };
 }
 
+function getCreatedSessionResult(
+  session: StripeCheckoutSession,
+): CheckoutSessionResult {
+  if (
+    session.status === "open" &&
+    session.payment_status === "unpaid" &&
+    session.url
+  ) {
+    return {
+      kind: "created",
+      url: session.url,
+    };
+  }
+
+  if (session.status === "complete" || session.payment_status === "paid") {
+    return unavailable("payment_pending");
+  }
+
+  return unavailable("checkout_failed");
+}
+
+async function createAndPersistCheckoutSession(
+  request: ReservationCheckoutRequest,
+  predecessorSessionId: string | null,
+  paymentUrl: string,
+  priceId: string,
+  createSession: CheckoutSessionCreator,
+): Promise<ReservationCheckoutOperationResult<CheckoutSessionResult>> {
+  let session: StripeCheckoutSession;
+
+  try {
+    session = await createSession(
+      {
+        cancel_url: `${paymentUrl}?checkout=cancelled`,
+        client_reference_id: request.id,
+        customer_email: request.guestEmail,
+        line_items: [
+          {
+            price: priceId,
+            quantity: 1,
+          },
+        ],
+        metadata: {
+          reservationRequestId: request.id,
+        },
+        mode: "payment",
+        success_url: `${paymentUrl}?checkout=returned`,
+      },
+      getCheckoutIdempotencyKey(request.id, predecessorSessionId),
+    );
+  } catch {
+    return resultOnly(unavailable("checkout_failed"));
+  }
+
+  const sessionId = session.id.trim();
+
+  if (!sessionId) {
+    return resultOnly(unavailable("checkout_failed"));
+  }
+
+  return {
+    result: getCreatedSessionResult(session),
+    sessionUpdate: {
+      id: sessionId,
+      retryable: false,
+    },
+  };
+}
+
 export async function createReservationCheckoutSession({
   appUrl,
   createSession,
+  lockRequest = withLockedReservationCheckoutRequest,
   priceId,
   requestId,
-  loadRequests = readReservationRequests,
+  retrieveSession,
 }: CreateReservationCheckoutSessionInput): Promise<CheckoutSessionResult> {
   const trimmedPriceId = priceId?.trim();
   const checkoutReadiness = getCheckoutReadiness({
     appUrl,
-    hasStripeConfig: createSession !== null && Boolean(trimmedPriceId),
+    hasStripeConfig:
+      createSession !== null &&
+      retrieveSession !== null &&
+      Boolean(trimmedPriceId),
   });
 
-  if (!checkoutReadiness || !createSession || !trimmedPriceId) {
-    return {
-      kind: "unavailable",
-      reason: "missing_config",
-    };
-  }
-
-  let requests: ReservationRequestRecord[];
-
-  try {
-    requests = await loadRequests();
-  } catch {
-    return {
-      kind: "unavailable",
-      reason: "unreadable",
-    };
-  }
-
-  const reservationRequest = requests.find((request) => request.id === requestId);
-
-  if (!reservationRequest) {
-    return {
-      kind: "unavailable",
-      reason: "not_found",
-    };
-  }
-
-  if (reservationRequest.status !== "accepted") {
-    return {
-      kind: "unavailable",
-      reason: "not_accepted",
-    };
-  }
-
-  if (reservationRequest.paymentStatus === "paid") {
-    return {
-      kind: "unavailable",
-      reason: "already_paid",
-    };
+  if (
+    !checkoutReadiness ||
+    !createSession ||
+    !retrieveSession ||
+    !trimmedPriceId
+  ) {
+    return unavailable("missing_config");
   }
 
   const paymentUrl = `${checkoutReadiness.appOrigin}/pay/${encodeURIComponent(requestId)}`;
-  let session: { url: string | null };
+  let lockedResult: ReservationCheckoutLockResult<CheckoutSessionResult>;
 
   try {
-    session = await createSession({
-      cancel_url: `${paymentUrl}?checkout=cancelled`,
-      client_reference_id: reservationRequest.id,
-      customer_email: reservationRequest.guestEmail,
-      line_items: [
-        {
-          price: trimmedPriceId,
-          quantity: 1,
-        },
-      ],
-      metadata: {
-        reservationRequestId: reservationRequest.id,
-      },
-      mode: "payment",
-      success_url: `${paymentUrl}?checkout=returned`,
+    lockedResult = await lockRequest(requestId, async (reservationRequest) => {
+      if (reservationRequest.status !== "accepted") {
+        return resultOnly(unavailable("not_accepted"));
+      }
+
+      if (reservationRequest.paymentStatus === "paid") {
+        return resultOnly(unavailable("already_paid"));
+      }
+
+      const currentSessionId = reservationRequest.stripeCheckoutSessionId;
+
+      if (
+        !currentSessionId ||
+        reservationRequest.stripeCheckoutSessionRetryable
+      ) {
+        return createAndPersistCheckoutSession(
+          reservationRequest,
+          currentSessionId,
+          paymentUrl,
+          trimmedPriceId,
+          createSession,
+        );
+      }
+
+      let currentSession: StripeCheckoutSession;
+
+      try {
+        currentSession = await retrieveSession(currentSessionId);
+      } catch {
+        return resultOnly(unavailable("checkout_failed"));
+      }
+
+      if (currentSession.id !== currentSessionId) {
+        return resultOnly(unavailable("checkout_failed"));
+      }
+
+      if (
+        currentSession.status === "open" &&
+        currentSession.payment_status === "unpaid" &&
+        currentSession.url
+      ) {
+        return resultOnly({
+          kind: "created",
+          url: currentSession.url,
+        });
+      }
+
+      if (
+        currentSession.status === "complete" ||
+        currentSession.payment_status === "paid"
+      ) {
+        return resultOnly(unavailable("payment_pending"));
+      }
+
+      if (
+        currentSession.status === "expired" &&
+        currentSession.payment_status === "unpaid"
+      ) {
+        return createAndPersistCheckoutSession(
+          reservationRequest,
+          currentSessionId,
+          paymentUrl,
+          trimmedPriceId,
+          createSession,
+        );
+      }
+
+      return resultOnly(unavailable("checkout_failed"));
     });
   } catch {
-    return {
-      kind: "unavailable",
-      reason: "checkout_failed",
-    };
+    return unavailable("unreadable");
   }
 
-  if (!session.url) {
-    return {
-      kind: "unavailable",
-      reason: "checkout_failed",
-    };
+  if (lockedResult.kind === "not_found") {
+    return unavailable("not_found");
   }
 
-  return {
-    kind: "created",
-    url: session.url,
-  };
+  return lockedResult.result;
 }

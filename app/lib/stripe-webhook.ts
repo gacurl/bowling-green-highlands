@@ -1,9 +1,11 @@
 import type Stripe from "stripe";
 import {
+  markReservationCheckoutSessionRetryable,
   markReservationRequestPaid,
   readReservationRequests,
 } from "./reservation-requests";
 import type {
+  MarkReservationCheckoutSessionRetryableResult,
   MarkReservationRequestPaidResult,
   ReservationRequestRecord,
 } from "./reservation-requests";
@@ -33,7 +35,12 @@ export type StripeWebhookEventConstructor = (
 type RequestLoader = () => Promise<ReservationRequestRecord[]>;
 type PaymentMarker = (
   reservationRequestId: string,
+  stripeCheckoutSessionId: string,
 ) => Promise<MarkReservationRequestPaidResult>;
+type RetryableSessionMarker = (
+  reservationRequestId: string,
+  stripeCheckoutSessionId: string,
+) => Promise<MarkReservationCheckoutSessionRetryableResult>;
 
 type ClassifyStripeWebhookInput = {
   constructEvent: StripeWebhookEventConstructor | null;
@@ -45,7 +52,19 @@ type ClassifyStripeWebhookInput = {
 
 type ProcessStripeWebhookInput = ClassifyStripeWebhookInput & {
   markPaid?: PaymentMarker;
+  markRetryable?: RetryableSessionMarker;
 };
+
+type IgnoredStripeWebhookReason =
+  | "already_paid"
+  | "invalid_reservation_reference"
+  | "not_accepted"
+  | "not_found"
+  | "not_paid"
+  | "not_payment_mode"
+  | "not_checkout_session"
+  | "stale_session"
+  | "unsupported_event";
 
 export type StripeWebhookClassification =
   | {
@@ -54,22 +73,23 @@ export type StripeWebhookClassification =
       httpStatus: 200;
       kind: "verified_payment";
       reservationRequestId: string;
+      stripeCheckoutSessionId: string;
+    }
+  | {
+      eventId: string;
+      eventType: StripePaymentFailureEventType;
+      httpStatus: 200;
+      kind: "verified_retryable_session";
+      reason: "payment_failed" | "session_expired";
+      reservationRequestId: string;
+      stripeCheckoutSessionId: string;
     }
   | {
       eventId: string | null;
       eventType: string | null;
       httpStatus: 200;
       kind: "ignored";
-      reason:
-        | "invalid_reservation_reference"
-        | "not_accepted"
-        | "not_found"
-        | "not_paid"
-        | "not_payment_mode"
-        | "not_checkout_session"
-        | "payment_failed"
-        | "session_expired"
-        | "unsupported_event";
+      reason: IgnoredStripeWebhookReason;
     }
   | {
       httpStatus: 400;
@@ -110,6 +130,19 @@ function isCheckoutSession(value: unknown): value is Stripe.Checkout.Session {
   );
 }
 
+function ignoredClassification(
+  event: Stripe.Event,
+  reason: IgnoredStripeWebhookReason,
+): StripeWebhookClassification {
+  return {
+    eventId: typeof event.id === "string" ? event.id : null,
+    eventType: typeof event.type === "string" ? event.type : null,
+    httpStatus: 200,
+    kind: "ignored",
+    reason,
+  };
+}
+
 export async function classifyStripeWebhook({
   constructEvent,
   loadRequests = readReservationRequests,
@@ -147,76 +180,42 @@ export async function classifyStripeWebhook({
     };
   }
 
-  if (isPaymentFailureEventType(event.type)) {
-    return {
-      eventId: typeof event.id === "string" ? event.id : null,
-      eventType: event.type,
-      httpStatus: 200,
-      kind: "ignored",
-      reason:
-        event.type === "checkout.session.async_payment_failed"
-          ? "payment_failed"
-          : "session_expired",
-    };
-  }
+  const isPaymentEvent = isSupportedPaymentEventType(event.type);
+  const isFailureEvent = isPaymentFailureEventType(event.type);
 
-  if (!isSupportedPaymentEventType(event.type)) {
-    return {
-      eventId: typeof event.id === "string" ? event.id : null,
-      eventType: typeof event.type === "string" ? event.type : null,
-      httpStatus: 200,
-      kind: "ignored",
-      reason: "unsupported_event",
-    };
+  if (!isPaymentEvent && !isFailureEvent) {
+    return ignoredClassification(event, "unsupported_event");
   }
 
   const session = event.data.object;
 
   if (!isCheckoutSession(session)) {
-    return {
-      eventId: event.id,
-      eventType: event.type,
-      httpStatus: 200,
-      kind: "ignored",
-      reason: "not_checkout_session",
-    };
+    return ignoredClassification(event, "not_checkout_session");
   }
 
   if (session.mode !== "payment") {
-    return {
-      eventId: event.id,
-      eventType: event.type,
-      httpStatus: 200,
-      kind: "ignored",
-      reason: "not_payment_mode",
-    };
+    return ignoredClassification(event, "not_payment_mode");
   }
 
-  if (session.payment_status !== "paid") {
-    return {
-      eventId: event.id,
-      eventType: event.type,
-      httpStatus: 200,
-      kind: "ignored",
-      reason: "not_paid",
-    };
+  if (isPaymentEvent && session.payment_status !== "paid") {
+    return ignoredClassification(event, "not_paid");
+  }
+
+  if (isFailureEvent && session.payment_status === "paid") {
+    return ignoredClassification(event, "already_paid");
   }
 
   const metadataRequestId = session.metadata?.reservationRequestId?.trim();
   const clientReferenceId = session.client_reference_id?.trim();
+  const stripeCheckoutSessionId = session.id?.trim();
 
   if (
     !metadataRequestId ||
     !clientReferenceId ||
+    !stripeCheckoutSessionId ||
     clientReferenceId !== metadataRequestId
   ) {
-    return {
-      eventId: event.id,
-      eventType: event.type,
-      httpStatus: 200,
-      kind: "ignored",
-      reason: "invalid_reservation_reference",
-    };
+    return ignoredClassification(event, "invalid_reservation_reference");
   }
 
   let requests: ReservationRequestRecord[];
@@ -236,64 +235,116 @@ export async function classifyStripeWebhook({
   );
 
   if (!reservationRequest) {
-    return {
-      eventId: event.id,
-      eventType: event.type,
-      httpStatus: 200,
-      kind: "ignored",
-      reason: "not_found",
-    };
+    return ignoredClassification(event, "not_found");
   }
 
   if (reservationRequest.status !== "accepted") {
+    return ignoredClassification(event, "not_accepted");
+  }
+
+  if (isFailureEvent) {
+    const eventType = event.type as StripePaymentFailureEventType;
+
     return {
       eventId: event.id,
-      eventType: event.type,
+      eventType,
       httpStatus: 200,
-      kind: "ignored",
-      reason: "not_accepted",
+      kind: "verified_retryable_session",
+      reason:
+        eventType === "checkout.session.async_payment_failed"
+          ? "payment_failed"
+          : "session_expired",
+      reservationRequestId: reservationRequest.id,
+      stripeCheckoutSessionId,
     };
   }
 
+  const eventType = event.type as SupportedStripePaymentEventType;
+
   return {
     eventId: event.id,
-    eventType: event.type,
+    eventType,
     httpStatus: 200,
     kind: "verified_payment",
     reservationRequestId: reservationRequest.id,
+    stripeCheckoutSessionId,
+  };
+}
+
+function ignoredFromVerified(
+  classification: Extract<
+    StripeWebhookClassification,
+    { kind: "verified_payment" | "verified_retryable_session" }
+  >,
+  reason: "already_paid" | "not_accepted" | "not_found" | "stale_session",
+): StripeWebhookClassification {
+  return {
+    eventId: classification.eventId,
+    eventType: classification.eventType,
+    httpStatus: 200,
+    kind: "ignored",
+    reason,
   };
 }
 
 export async function processStripeWebhook({
   markPaid = markReservationRequestPaid,
+  markRetryable = markReservationCheckoutSessionRetryable,
   ...classificationInput
 }: ProcessStripeWebhookInput): Promise<StripeWebhookClassification> {
   const classification = await classifyStripeWebhook(classificationInput);
 
-  if (classification.kind !== "verified_payment") {
+  if (classification.kind === "verified_payment") {
+    let paymentUpdate: MarkReservationRequestPaidResult;
+
+    try {
+      paymentUpdate = await markPaid(
+        classification.reservationRequestId,
+        classification.stripeCheckoutSessionId,
+      );
+    } catch {
+      return {
+        httpStatus: 500,
+        kind: "unavailable",
+        reason: "reservation_store_unwritable",
+      };
+    }
+
+    if (
+      paymentUpdate === "not_found" ||
+      paymentUpdate === "not_accepted" ||
+      paymentUpdate === "stale_session"
+    ) {
+      return ignoredFromVerified(classification, paymentUpdate);
+    }
+
     return classification;
   }
 
-  let paymentUpdate: MarkReservationRequestPaidResult;
+  if (classification.kind === "verified_retryable_session") {
+    let retryableUpdate: MarkReservationCheckoutSessionRetryableResult;
 
-  try {
-    paymentUpdate = await markPaid(classification.reservationRequestId);
-  } catch {
-    return {
-      httpStatus: 500,
-      kind: "unavailable",
-      reason: "reservation_store_unwritable",
-    };
-  }
+    try {
+      retryableUpdate = await markRetryable(
+        classification.reservationRequestId,
+        classification.stripeCheckoutSessionId,
+      );
+    } catch {
+      return {
+        httpStatus: 500,
+        kind: "unavailable",
+        reason: "reservation_store_unwritable",
+      };
+    }
 
-  if (paymentUpdate === "not_found" || paymentUpdate === "not_accepted") {
-    return {
-      eventId: classification.eventId,
-      eventType: classification.eventType,
-      httpStatus: 200,
-      kind: "ignored",
-      reason: paymentUpdate === "not_found" ? "not_found" : "not_accepted",
-    };
+    if (
+      retryableUpdate === "not_found" ||
+      retryableUpdate === "not_accepted" ||
+      retryableUpdate === "stale_session" ||
+      retryableUpdate === "already_paid"
+    ) {
+      return ignoredFromVerified(classification, retryableUpdate);
+    }
   }
 
   return classification;
