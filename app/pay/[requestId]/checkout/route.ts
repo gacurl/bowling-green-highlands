@@ -15,8 +15,11 @@ export function createCheckoutRedirectResponse(
   checkoutResult: CheckoutSessionResult,
 ) {
   if (checkoutResult.kind !== "created") {
+    const checkoutState =
+      checkoutResult.reason === "payment_pending" ? "returned" : "unavailable";
+
     return NextResponse.redirect(
-      new URL(`/pay/${requestId}?checkout=unavailable`, requestUrl),
+      new URL(`/pay/${requestId}?checkout=${checkoutState}`, requestUrl),
       303,
     );
   }
@@ -30,11 +33,17 @@ export async function POST(request: Request, { params }: CheckoutRouteProps) {
   const checkoutResult = await createReservationCheckoutSession({
     appUrl: process.env.NEXT_PUBLIC_APP_URL,
     createSession: stripeCheckout
-      ? (sessionParams) =>
-          stripeCheckout.stripe.checkout.sessions.create(sessionParams)
+      ? (sessionParams, idempotencyKey) =>
+          stripeCheckout.stripe.checkout.sessions.create(sessionParams, {
+            idempotencyKey,
+          })
       : null,
     priceId: stripeCheckout?.priceId,
     requestId,
+    retrieveSession: stripeCheckout
+      ? (sessionId) =>
+          stripeCheckout.stripe.checkout.sessions.retrieve(sessionId)
+      : null,
   });
 
   return createCheckoutRedirectResponse(request.url, requestId, checkoutResult);

@@ -24,6 +24,7 @@ import {
   writeReservationRequests,
 } from "./reservation-requests";
 import type {
+  MarkReservationCheckoutSessionRetryableResult,
   MarkReservationRequestPaidResult,
   ReservationRequestRecord,
 } from "./reservation-requests";
@@ -48,6 +49,8 @@ const acceptedRequest: ReservationRequestRecord = {
   requestNotes: "private notes",
   requestedDates: "2026-06-14 09:00 to 09:30",
   status: "accepted",
+  stripeCheckoutSessionId: "cs_test_webhook",
+  stripeCheckoutSessionRetryable: false,
 };
 
 const pendingRequest: ReservationRequestRecord = {
@@ -63,6 +66,8 @@ type EventPayloadOptions = {
   mode?: string;
   objectType?: string;
   paymentStatus?: string;
+  sessionId?: string;
+  sessionStatus?: string;
 };
 
 function createEventPayload(options: EventPayloadOptions = {}) {
@@ -73,7 +78,7 @@ function createEventPayload(options: EventPayloadOptions = {}) {
           options.clientReferenceId === undefined
             ? RESERVATION_REQUEST_ID
             : options.clientReferenceId,
-        id: "cs_test_webhook",
+        id: options.sessionId ?? "cs_test_webhook",
         metadata:
           options.metadata === undefined
             ? { reservationRequestId: RESERVATION_REQUEST_ID }
@@ -81,6 +86,7 @@ function createEventPayload(options: EventPayloadOptions = {}) {
         mode: options.mode ?? "payment",
         object: options.objectType ?? "checkout.session",
         payment_status: options.paymentStatus ?? "paid",
+        status: options.sessionStatus ?? "complete",
       },
     },
     id: options.eventId ?? "evt_test_webhook",
@@ -128,7 +134,13 @@ async function processSignedPayload(
   ],
   markPaid: (
     reservationRequestId: string,
+    stripeCheckoutSessionId: string,
   ) => Promise<MarkReservationRequestPaidResult> = async () => "updated",
+  markRetryable: (
+    reservationRequestId: string,
+    stripeCheckoutSessionId: string,
+  ) => Promise<MarkReservationCheckoutSessionRetryableResult> = async () =>
+    "updated",
 ) {
   const rawBody = createEventPayload(payloadOptions);
 
@@ -136,6 +148,7 @@ async function processSignedPayload(
     constructEvent,
     loadRequests,
     markPaid,
+    markRetryable,
     rawBody,
     signature: createSignature(rawBody),
     webhookSecret: WEBHOOK_SECRET_PLACEHOLDER,
@@ -151,6 +164,7 @@ test("verifies a signed paid checkout.session.completed event", async () => {
     httpStatus: 200,
     kind: "verified_payment",
     reservationRequestId: RESERVATION_REQUEST_ID,
+    stripeCheckoutSessionId: "cs_test_webhook",
   });
 });
 
@@ -170,6 +184,7 @@ test("verified completed and async-success events persist paid status", async ()
     id: "async-accepted-id",
     paymentStatus: "unpaid",
     requestedDates: "2026-06-14 10:00 to 10:30",
+    stripeCheckoutSessionId: "cs_test_async_webhook",
   };
   await writeReservationRequests(
     [
@@ -179,8 +194,8 @@ test("verified completed and async-success events persist paid status", async ()
     storePath,
   );
   const loadRequests = () => readReservationRequests(storePath);
-  const markPaid = (requestId: string) =>
-    markReservationRequestPaid(requestId, storePath);
+  const markPaid = (requestId: string, sessionId: string) =>
+    markReservationRequestPaid(requestId, sessionId, storePath);
 
   const completedResult = await processSignedPayload(
     {},
@@ -193,6 +208,7 @@ test("verified completed and async-success events persist paid status", async ()
       eventId: "evt_test_async_persisted",
       eventType: "checkout.session.async_payment_succeeded",
       metadata: { reservationRequestId: asyncRequest.id },
+      sessionId: "cs_test_async_webhook",
     },
     loadRequests,
     markPaid,
@@ -224,6 +240,7 @@ test("verified payment changes only payment status and preserves exact-slot avai
     id: "payment-integrity-id",
     paymentStatus: "unpaid",
     requestedDates: `${RESERVE_EXAMPLE_DATE} 09:00 to 09:30`,
+    stripeCheckoutSessionId: "cs_test_payment_integrity",
   };
   const requestedSlot = parseRequestedSlotValue(paymentRequest.requestedDates);
 
@@ -262,9 +279,11 @@ test("verified payment changes only payment status and preserves exact-slot avai
         clientReferenceId: paymentRequest.id,
         eventId: "evt_test_payment_integrity",
         metadata: { reservationRequestId: paymentRequest.id },
+        sessionId: "cs_test_payment_integrity",
       },
       () => readReservationRequests(requestStorePath),
-      (requestId) => markReservationRequestPaid(requestId, requestStorePath),
+      (requestId, sessionId) =>
+        markReservationRequestPaid(requestId, sessionId, requestStorePath),
     );
     const [persistedRequest] = await readReservationRequests(requestStorePath);
     const persistedSlot = parseRequestedSlotValue(persistedRequest.requestedDates);
@@ -328,51 +347,150 @@ test("invalid, unpaid, and unsupported events do not call payment persistence", 
   assert.equal(mutationCount, 0);
 });
 
-test("signed async-failure and expiry events are 200 no-ops without state access", async () => {
-  const paidRequest: ReservationRequestRecord = {
-    ...acceptedRequest,
-    paymentStatus: "paid",
-  };
-  const originalRequest = structuredClone(paidRequest);
+test("signed async-failure and expiry events mark the current Session retryable", async () => {
   let lookupCount = 0;
-  let mutationCount = 0;
+  let paidMutationCount = 0;
+  const retryableSessions: string[] = [];
   const loadRequests = async () => {
     lookupCount += 1;
-    return [paidRequest];
+    return [acceptedRequest];
   };
   const markPaid = async (): Promise<MarkReservationRequestPaidResult> => {
-    mutationCount += 1;
+    paidMutationCount += 1;
+    return "updated";
+  };
+  const markRetryable = async (
+    _requestId: string,
+    sessionId: string,
+  ): Promise<MarkReservationCheckoutSessionRetryableResult> => {
+    retryableSessions.push(sessionId);
     return "updated";
   };
 
   const failedResult = await processSignedPayload(
-    { eventType: "checkout.session.async_payment_failed" },
+    {
+      eventType: "checkout.session.async_payment_failed",
+      paymentStatus: "unpaid",
+    },
     loadRequests,
     markPaid,
+    markRetryable,
   );
   const expiredResult = await processSignedPayload(
-    { eventType: "checkout.session.expired" },
+    {
+      eventType: "checkout.session.expired",
+      paymentStatus: "unpaid",
+      sessionStatus: "expired",
+    },
     loadRequests,
     markPaid,
+    markRetryable,
   );
 
   assert.deepEqual(failedResult, {
     eventId: "evt_test_webhook",
     eventType: "checkout.session.async_payment_failed",
     httpStatus: 200,
-    kind: "ignored",
+    kind: "verified_retryable_session",
     reason: "payment_failed",
+    reservationRequestId: RESERVATION_REQUEST_ID,
+    stripeCheckoutSessionId: "cs_test_webhook",
   });
   assert.deepEqual(expiredResult, {
     eventId: "evt_test_webhook",
     eventType: "checkout.session.expired",
     httpStatus: 200,
-    kind: "ignored",
+    kind: "verified_retryable_session",
     reason: "session_expired",
+    reservationRequestId: RESERVATION_REQUEST_ID,
+    stripeCheckoutSessionId: "cs_test_webhook",
   });
-  assert.equal(lookupCount, 0);
+  assert.equal(lookupCount, 2);
+  assert.equal(paidMutationCount, 0);
+  assert.deepEqual(retryableSessions, [
+    "cs_test_webhook",
+    "cs_test_webhook",
+  ]);
+});
+
+test("duplicate retryable-session delivery remains idempotent", async () => {
+  let mutationCount = 0;
+  const markRetryable = async (): Promise<MarkReservationCheckoutSessionRetryableResult> => {
+    mutationCount += 1;
+    return mutationCount === 1 ? "updated" : "already_retryable";
+  };
+  const payload = {
+    eventType: "checkout.session.async_payment_failed",
+    paymentStatus: "unpaid",
+  };
+
+  const firstResult = await processSignedPayload(
+    payload,
+    async () => [acceptedRequest],
+    async () => "updated",
+    markRetryable,
+  );
+  const duplicateResult = await processSignedPayload(
+    payload,
+    async () => [acceptedRequest],
+    async () => "updated",
+    markRetryable,
+  );
+
+  assert.deepEqual(duplicateResult, firstResult);
+  assert.equal(duplicateResult.kind, "verified_retryable_session");
+  assert.equal(mutationCount, 2);
+});
+
+test("stale paid, failure, and expiry events cannot mutate a newer Session", async () => {
+  const stalePaid = await processSignedPayload(
+    { sessionId: "cs_test_stale" },
+    async () => [acceptedRequest],
+    async () => "stale_session",
+  );
+  const staleFailure = await processSignedPayload(
+    {
+      eventType: "checkout.session.async_payment_failed",
+      paymentStatus: "unpaid",
+      sessionId: "cs_test_stale",
+    },
+    async () => [acceptedRequest],
+    async () => "updated",
+    async () => "stale_session",
+  );
+  const staleExpiry = await processSignedPayload(
+    {
+      eventType: "checkout.session.expired",
+      paymentStatus: "unpaid",
+      sessionId: "cs_test_stale",
+      sessionStatus: "expired",
+    },
+    async () => [acceptedRequest],
+    async () => "updated",
+    async () => "stale_session",
+  );
+
+  for (const result of [stalePaid, staleFailure, staleExpiry]) {
+    assert.equal(result.kind, "ignored");
+    assert.equal(result.kind === "ignored" ? result.reason : null, "stale_session");
+  }
+});
+
+test("failure events reporting paid status cannot make a Session retryable", async () => {
+  let mutationCount = 0;
+  const result = await processSignedPayload(
+    { eventType: "checkout.session.async_payment_failed" },
+    async () => [acceptedRequest],
+    async () => "updated",
+    async () => {
+      mutationCount += 1;
+      return "updated";
+    },
+  );
+
+  assert.equal(result.kind, "ignored");
+  assert.equal(result.kind === "ignored" ? result.reason : null, "already_paid");
   assert.equal(mutationCount, 0);
-  assert.deepEqual(paidRequest, originalRequest);
 });
 
 test("invalid signatures on failure events still return 400", async () => {
@@ -386,6 +504,9 @@ test("invalid signatures on failure events still return 400", async () => {
     },
     markPaid: async () => {
       throw new Error("failure event must not mutate payment state");
+    },
+    markRetryable: async () => {
+      throw new Error("failure event must not mutate retry state");
     },
     rawBody,
     signature: createSignature(rawBody, {

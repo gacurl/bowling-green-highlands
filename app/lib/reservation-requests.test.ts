@@ -4,15 +4,40 @@ import { createTestDatabase } from "../../lib/test-support/postgres-test-databas
 import {
   createReservationRequestRecord,
   isReservationRequestStatusUpdate,
+  markReservationCheckoutSessionRetryable,
   markReservationRequestPaid,
   readReservationRequests,
   updateReservationRequestStatus,
+  withLockedReservationCheckoutRequest,
   writeReservationRequests,
 } from "./reservation-requests";
 import type { ReservationRequestRecord } from "./reservation-requests";
 
 async function createStorePath() {
   return createTestDatabase();
+}
+
+async function attachCheckoutSession(
+  requestId: string,
+  sessionId: string,
+  database: Awaited<ReturnType<typeof createStorePath>>,
+) {
+  const result = await withLockedReservationCheckoutRequest(
+    requestId,
+    async () => ({
+      result: "attached" as const,
+      sessionUpdate: {
+        id: sessionId,
+        retryable: false,
+      },
+    }),
+    database,
+  );
+
+  assert.deepEqual(result, {
+    kind: "found",
+    result: "attached",
+  });
 }
 
 test("returns empty array when no request rows exist", async () => {
@@ -277,7 +302,15 @@ test("marks only the targeted accepted reservation as paid", async () => {
   );
 
   assert.equal(
-    await markReservationRequestPaid(targetRequest.id, storePath),
+    await attachCheckoutSession(targetRequest.id, "cs_test_target", storePath),
+    undefined,
+  );
+  assert.equal(
+    await markReservationRequestPaid(
+      targetRequest.id,
+      "cs_test_target",
+      storePath,
+    ),
     "updated",
   );
 
@@ -321,15 +354,27 @@ test("does not mark pending, declined, or missing reservations as paid", async (
     "updated",
   );
   assert.equal(
-    await markReservationRequestPaid(pendingRequest.id, storePath),
+    await markReservationRequestPaid(
+      pendingRequest.id,
+      "cs_test_pending",
+      storePath,
+    ),
     "not_accepted",
   );
   assert.equal(
-    await markReservationRequestPaid(declinedRequest.id, storePath),
+    await markReservationRequestPaid(
+      declinedRequest.id,
+      "cs_test_declined",
+      storePath,
+    ),
     "not_accepted",
   );
   assert.equal(
-    await markReservationRequestPaid("missing-id", storePath),
+    await markReservationRequestPaid(
+      "missing-id",
+      "cs_test_missing",
+      storePath,
+    ),
     "not_found",
   );
 
@@ -360,16 +405,137 @@ test("an already-paid reservation remains paid without another write", async () 
     "updated",
   );
   assert.equal(
-    await markReservationRequestPaid(request.id, storePath),
+    await attachCheckoutSession(request.id, "cs_test_paid", storePath),
+    undefined,
+  );
+  assert.equal(
+    await markReservationRequestPaid(request.id, "cs_test_paid", storePath),
     "updated",
   );
 
   assert.equal(
-    await markReservationRequestPaid(request.id, storePath),
+    await markReservationRequestPaid(request.id, "cs_test_paid", storePath),
     "already_paid",
   );
   assert.equal(
     (await readReservationRequests(storePath))[0].paymentStatus,
+    "paid",
+  );
+});
+
+test("paid and retryable mutations reject stale Checkout Sessions", async () => {
+  const database = await createStorePath();
+  const request = await createReservationRequestRecord(
+    {
+      eventType: "farm_stay",
+      guestEmail: "stale-session@example.com",
+      guestName: "Stale Session Guest",
+      requestNotes: "",
+      requestedDates: "2026-08-06 09:00 to 09:30",
+    },
+    database,
+  );
+  assert.equal(
+    await updateReservationRequestStatus(request.id, "accepted", database),
+    "updated",
+  );
+  await attachCheckoutSession(request.id, "cs_test_current", database);
+
+  assert.equal(
+    await markReservationRequestPaid(request.id, "cs_test_stale", database),
+    "stale_session",
+  );
+  assert.equal(
+    await markReservationCheckoutSessionRetryable(
+      request.id,
+      "cs_test_stale",
+      database,
+    ),
+    "stale_session",
+  );
+
+  const [persistedRequest] = await readReservationRequests(database);
+
+  assert.equal(persistedRequest.paymentStatus, "unpaid");
+  assert.equal(persistedRequest.stripeCheckoutSessionId, "cs_test_current");
+  assert.equal(persistedRequest.stripeCheckoutSessionRetryable, false);
+});
+
+test("duplicate failure delivery marks only the current Session retryable", async () => {
+  const database = await createStorePath();
+  const request = await createReservationRequestRecord(
+    {
+      eventType: "farm_stay",
+      guestEmail: "retryable@example.com",
+      guestName: "Retryable Guest",
+      requestNotes: "",
+      requestedDates: "2026-08-07 09:00 to 09:30",
+    },
+    database,
+  );
+  assert.equal(
+    await updateReservationRequestStatus(request.id, "accepted", database),
+    "updated",
+  );
+  await attachCheckoutSession(request.id, "cs_test_retryable", database);
+
+  assert.equal(
+    await markReservationCheckoutSessionRetryable(
+      request.id,
+      "cs_test_retryable",
+      database,
+    ),
+    "updated",
+  );
+  assert.equal(
+    await markReservationCheckoutSessionRetryable(
+      request.id,
+      "cs_test_retryable",
+      database,
+    ),
+    "already_retryable",
+  );
+  assert.equal(
+    (await readReservationRequests(database))[0]
+      .stripeCheckoutSessionRetryable,
+    true,
+  );
+});
+
+test("concurrent duplicate paid delivery produces one payment transition", async () => {
+  const database = await createStorePath();
+  const request = await createReservationRequestRecord(
+    {
+      eventType: "farm_stay",
+      guestEmail: "concurrent-paid@example.com",
+      guestName: "Concurrent Paid Guest",
+      requestNotes: "",
+      requestedDates: "2026-08-08 09:00 to 09:30",
+    },
+    database,
+  );
+  assert.equal(
+    await updateReservationRequestStatus(request.id, "accepted", database),
+    "updated",
+  );
+  await attachCheckoutSession(request.id, "cs_test_concurrent_paid", database);
+
+  const results = await Promise.all([
+    markReservationRequestPaid(
+      request.id,
+      "cs_test_concurrent_paid",
+      database,
+    ),
+    markReservationRequestPaid(
+      request.id,
+      "cs_test_concurrent_paid",
+      database,
+    ),
+  ]);
+
+  assert.deepEqual(results.sort(), ["already_paid", "updated"]);
+  assert.equal(
+    (await readReservationRequests(database))[0].paymentStatus,
     "paid",
   );
 });
