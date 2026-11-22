@@ -134,8 +134,8 @@ export default async function ReservePage({ searchParams }: ReservePageProps) {
               className="w-full rounded-2xl border border-[#CFC3AE] bg-white px-4 py-3 text-[#2B2922] outline-none transition focus:border-[#2F4A35] disabled:bg-stone-100 disabled:text-stone-500"
             />
             <p id="preferred-time-note" className="text-sm text-[#5F604E]">
-              Choose a time within the selected date’s window in 15-minute
-              increments.
+              Times are shown in Eastern Time. Choose a time within the selected
+              date’s window in 15-minute increments.
             </p>
           </div>
           <div className="space-y-2">

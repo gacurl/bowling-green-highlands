@@ -200,7 +200,7 @@ test(
       assert.match(sentEmails[0].text, /- Event type: Farm stay/);
       assert.match(
         sentEmails[0].text,
-        /- Requested date and time: Sunday, June 14, 2026, 09:00/,
+        /- Requested date and time: Sunday, June 14, 2026 at 9:00 AM Eastern Time/,
       );
       assert.match(
         sentEmails[0].text,
@@ -638,7 +638,7 @@ test(
       assert.match(sentEmails[0].text, /- Event type: Farm stay/);
       assert.match(
         sentEmails[0].text,
-        /- Requested date and time: Sunday, June 14, 2026, 09:00/,
+        /- Requested date and time: Sunday, June 14, 2026 at 9:00 AM Eastern Time/,
       );
     }),
   ),

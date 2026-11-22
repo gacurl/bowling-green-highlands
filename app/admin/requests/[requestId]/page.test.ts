@@ -17,7 +17,7 @@ const acceptedRequest: ReservationRequestRecord = {
   id: "accepted id/with?characters#",
   paymentStatus: "unpaid",
   requestNotes: "private notes",
-  requestedDates: "2026-06-14 09:00 to 09:30",
+  requestedDates: "2026-11-19 16:45",
   status: "accepted",
 };
 
@@ -91,6 +91,10 @@ test("Admin shows one sendable payment URL only when payment is ready", async (t
   assert.equal(acceptedMarkup.split(`href="${paymentUrl}"`).length - 1, 1);
   assert.ok(acceptedMarkup.includes(`>${paymentUrl}</a>`));
   assert.doesNotMatch(acceptedMarkup, /No action needed/i);
+  assert.match(
+    acceptedMarkup,
+    /Thursday, November 19, 2026 at 4:45 PM Eastern Time/,
+  );
 
   const paidMarkup = await renderRequestPage(paidRequest.id);
 
