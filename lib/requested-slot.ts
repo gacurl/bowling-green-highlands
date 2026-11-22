@@ -18,6 +18,15 @@ function isTime(value: string) {
   return /^\d{2}:\d{2}$/.test(value);
 }
 
+function formatFarmLocalTime(time: string) {
+  const [hourValue, minute] = time.split(":");
+  const hour = Number(hourValue);
+  const hourLabel = hour % 12 || 12;
+  const meridiem = hour < 12 ? "AM" : "PM";
+
+  return `${hourLabel}:${minute} ${meridiem}`;
+}
+
 export function formatRequestedSlotValue(slot: Pick<Slot, "date" | "startTime" | "endTime">) {
   return `${slot.date} ${slot.startTime} to ${slot.endTime}`;
 }
@@ -63,13 +72,14 @@ export function formatRequestedSlotLabel(requestedSlotValue: string) {
   const friendlyDate = new Intl.DateTimeFormat("en-US", {
     month: "long",
     day: "numeric",
+    timeZone: "UTC",
     weekday: "long",
     year: "numeric",
-  }).format(new Date(`${parsedSlotValue.date}T00:00:00`));
+  }).format(new Date(`${parsedSlotValue.date}T00:00:00Z`));
 
   const timeLabel = parsedSlotValue.endTime
-    ? `${parsedSlotValue.startTime} to ${parsedSlotValue.endTime}`
-    : parsedSlotValue.startTime;
+    ? `${formatFarmLocalTime(parsedSlotValue.startTime)} to ${formatFarmLocalTime(parsedSlotValue.endTime)}`
+    : formatFarmLocalTime(parsedSlotValue.startTime);
 
-  return `${friendlyDate}, ${timeLabel}`;
+  return `${friendlyDate} at ${timeLabel} Eastern Time`;
 }

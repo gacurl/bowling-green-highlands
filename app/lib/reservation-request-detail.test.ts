@@ -35,7 +35,7 @@ test("returns a friendly request detail item for a known request id", () => {
   assert.equal(requestDetailItem.eventTypeLabel, "Farm stay");
   assert.equal(
     requestDetailItem.requestedSlotLabel,
-    "Sunday, June 14, 2026, 09:00 to 09:30",
+    "Sunday, June 14, 2026 at 9:00 AM to 9:30 AM Eastern Time",
   );
   assert.equal(requestDetailItem.status, "pending");
   assert.equal(requestDetailItem.paymentStatusLabel, "Unpaid");
@@ -52,7 +52,7 @@ test("returns null for an unknown request id", () => {
 test("formats preferred-time request details for Admin display", () => {
   const preferredTimeRequest: ReservationRequestRecord = {
     ...requests[0],
-    requestedDates: "2026-06-14 09:00",
+    requestedDates: "2026-11-19 16:45",
   };
   const requestDetailItem = toReservationRequestDetailItem(
     [preferredTimeRequest],
@@ -61,7 +61,7 @@ test("formats preferred-time request details for Admin display", () => {
 
   assert.equal(
     requestDetailItem?.requestedSlotLabel,
-    "Sunday, June 14, 2026, 09:00",
+    "Thursday, November 19, 2026 at 4:45 PM Eastern Time",
   );
 });
 

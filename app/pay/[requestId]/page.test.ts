@@ -17,7 +17,7 @@ const acceptedRequest: ReservationRequestRecord = {
   id: "accepted-id",
   paymentStatus: "unpaid",
   requestNotes: "private notes",
-  requestedDates: "2026-06-14 09:00 to 09:30",
+  requestedDates: "2026-11-19 16:45",
   status: "accepted",
 };
 
@@ -90,5 +90,10 @@ test("payment page exposes secure payment only when Checkout is ready", async (t
 
     assert.match(markup, />Pay securely</, appUrl);
     assert.match(markup, /Complete your payment\./, appUrl);
+    assert.match(
+      markup,
+      /Thursday, November 19, 2026 at 4:45 PM Eastern Time/,
+      appUrl,
+    );
   }
 });

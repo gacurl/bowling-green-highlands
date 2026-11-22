@@ -41,7 +41,7 @@ test("formats event and requested slot labels for display", () => {
   assert.equal(requestListItems[0].eventTypeLabel, "Retreat");
   assert.equal(
     requestListItems[0].requestedSlotLabel,
-    "Monday, June 15, 2026, 10:00 to 10:30",
+    "Monday, June 15, 2026 at 10:00 AM to 10:30 AM Eastern Time",
   );
   assert.equal(requestListItems[0].status, "pending");
 });
@@ -50,12 +50,12 @@ test("formats preferred-time request labels for Admin display", () => {
   const [requestListItem] = toReservationRequestListItems([
     {
       ...requests[0],
-      requestedDates: "2026-06-14 09:00",
+      requestedDates: "2026-11-19 16:45",
     },
   ]);
 
   assert.equal(
     requestListItem.requestedSlotLabel,
-    "Sunday, June 14, 2026, 09:00",
+    "Thursday, November 19, 2026 at 4:45 PM Eastern Time",
   );
 });

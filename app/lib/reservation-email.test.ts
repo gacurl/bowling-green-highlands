@@ -139,7 +139,7 @@ test(
     assert.equal(sentEmails.length, 1);
     assert.match(
       String((sentEmails[0] as { text?: unknown }).text),
-      /Requested date and time: Sunday, June 14, 2026, 09:00 to 09:30/,
+      /Requested date and time: Sunday, June 14, 2026 at 9:00 AM to 9:30 AM Eastern Time/,
     );
   }),
 );
@@ -154,13 +154,13 @@ test(
 
     await sendReservationRequestEmail({
       ...reservationEmailInput,
-      requestedDates: "2026-06-14 09:00",
+      requestedDates: "2026-11-19 16:45",
     });
 
     assert.equal(sentEmails.length, 1);
     assert.match(
       String((sentEmails[0] as { text?: unknown }).text),
-      /Requested date and time: Sunday, June 14, 2026, 09:00/,
+      /Requested date and time: Thursday, November 19, 2026 at 4:45 PM Eastern Time/,
     );
   }),
 );

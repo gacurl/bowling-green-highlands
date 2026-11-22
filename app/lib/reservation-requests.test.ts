@@ -90,7 +90,7 @@ test("stores and reads preferred-time values without rewriting them", async () =
       guestEmail: "preferred@example.com",
       guestName: "Preferred Time Guest",
       requestNotes: "",
-      requestedDates: "2026-06-14 09:00",
+      requestedDates: "2026-11-19 16:45",
     },
     database,
   );
@@ -114,8 +114,8 @@ test("stores and reads preferred-time values without rewriting them", async () =
       )
     ).rows[0],
     {
-      requested_dates: "2026-06-14 09:00",
-      requested_start_key: "2026-06-14 09:00",
+      requested_dates: "2026-11-19 16:45",
+      requested_start_key: "2026-11-19 16:45",
     },
   );
 });
