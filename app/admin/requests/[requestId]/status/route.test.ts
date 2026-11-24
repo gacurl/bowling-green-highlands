@@ -17,11 +17,19 @@ import { POST } from "./route";
 
 const REQUEST_ORIGIN = "http://localhost";
 
-function createStatusRequest(requestId: string, status?: string) {
+function createStatusRequest(
+  requestId: string,
+  status?: string,
+  sessionDurationMinutes?: string,
+) {
   const body = new URLSearchParams();
 
   if (status !== undefined) {
     body.set("status", status);
+  }
+
+  if (sessionDurationMinutes !== undefined) {
+    body.set("sessionDurationMinutes", sessionDurationMinutes);
   }
 
   return new Request(
@@ -94,6 +102,153 @@ test("successful acceptance redirects with 303 and persists accepted status", as
   });
 });
 
+test("acceptance captures a supplied duration for a start-only request", async () => {
+  const database = await createTestDatabase();
+  const reservationRequest = await createPendingRequest(
+    database,
+    "2026-12-01 09:30",
+  );
+
+  await withTestDatabase(database, async () => {
+    const response = await POST(
+      createStatusRequest(reservationRequest.id, "accepted", "30"),
+      createRouteProps(reservationRequest.id),
+    );
+
+    assertSeeOther(response, `/admin/requests/${reservationRequest.id}`);
+    const [persistedRequest] = await readReservationRequests(database);
+
+    assert.equal(persistedRequest.status, "accepted");
+    assert.equal(persistedRequest.sessionDurationMinutes, 30);
+  });
+});
+
+test("missing duration redirects with 303 and leaves a start-only request pending", async () => {
+  const database = await createTestDatabase();
+  const reservationRequest = await createPendingRequest(
+    database,
+    "2026-12-01 09:45",
+  );
+
+  await withTestDatabase(database, async () => {
+    const response = await POST(
+      createStatusRequest(reservationRequest.id, "accepted"),
+      createRouteProps(reservationRequest.id),
+    );
+
+    assertSeeOther(
+      response,
+      `/admin/requests/${reservationRequest.id}?error=session_duration_required`,
+    );
+    const [persistedRequest] = await readReservationRequests(database);
+
+    assert.equal(persistedRequest.status, "pending");
+    assert.equal(persistedRequest.sessionDurationMinutes, undefined);
+  });
+});
+
+test("invalid supplied durations redirect with 303 without changing the request", async () => {
+  const database = await createTestDatabase();
+  const reservationRequest = await createPendingRequest(
+    database,
+    "2026-12-01 10:00",
+  );
+
+  await withTestDatabase(database, async () => {
+    for (const invalidDuration of ["0", "-1", "30.5", "1e2", "1441"]) {
+      const response = await POST(
+        createStatusRequest(
+          reservationRequest.id,
+          "accepted",
+          invalidDuration,
+        ),
+        createRouteProps(reservationRequest.id),
+      );
+
+      assertSeeOther(
+        response,
+        `/admin/requests/${reservationRequest.id}?error=invalid_session_duration`,
+      );
+    }
+    const [persistedRequest] = await readReservationRequests(database);
+
+    assert.equal(persistedRequest.status, "pending");
+    assert.equal(persistedRequest.sessionDurationMinutes, undefined);
+  });
+});
+
+test("duration that crosses midnight redirects with 303 and remains unsaved", async () => {
+  const database = await createTestDatabase();
+  const reservationRequest = await createPendingRequest(
+    database,
+    "2026-12-01 23:45",
+  );
+
+  await withTestDatabase(database, async () => {
+    const response = await POST(
+      createStatusRequest(reservationRequest.id, "accepted", "16"),
+      createRouteProps(reservationRequest.id),
+    );
+
+    assertSeeOther(
+      response,
+      `/admin/requests/${reservationRequest.id}?error=invalid_session_duration`,
+    );
+    const [persistedRequest] = await readReservationRequests(database);
+
+    assert.equal(persistedRequest.status, "pending");
+    assert.equal(persistedRequest.sessionDurationMinutes, undefined);
+  });
+});
+
+test("unresolved session interval redirects with 303 and remains pending", async () => {
+  const database = await createTestDatabase();
+  const reservationRequest = await createPendingRequest(
+    database,
+    "Call to arrange a date",
+  );
+
+  await withTestDatabase(database, async () => {
+    const response = await POST(
+      createStatusRequest(reservationRequest.id, "accepted", "30"),
+      createRouteProps(reservationRequest.id),
+    );
+
+    assertSeeOther(
+      response,
+      `/admin/requests/${reservationRequest.id}?error=session_interval_unavailable`,
+    );
+    const [persistedRequest] = await readReservationRequests(database);
+
+    assert.equal(persistedRequest.status, "pending");
+    assert.equal(persistedRequest.sessionDurationMinutes, undefined);
+  });
+});
+
+test("conflicting supplied duration cannot overwrite a known duration", async () => {
+  const database = await createTestDatabase();
+  const reservationRequest = await createPendingRequest(
+    database,
+    "2026-12-01 10:30 to 11:00",
+  );
+
+  await withTestDatabase(database, async () => {
+    const response = await POST(
+      createStatusRequest(reservationRequest.id, "accepted", "45"),
+      createRouteProps(reservationRequest.id),
+    );
+
+    assertSeeOther(
+      response,
+      `/admin/requests/${reservationRequest.id}?error=invalid_session_duration`,
+    );
+    const [persistedRequest] = await readReservationRequests(database);
+
+    assert.equal(persistedRequest.status, "pending");
+    assert.equal(persistedRequest.sessionDurationMinutes, 30);
+  });
+});
+
 test("successful decline redirects with 303 and persists declined status", async () => {
   const database = await createTestDatabase();
   const reservationRequest = await createPendingRequest(
@@ -109,6 +264,31 @@ test("successful decline redirects with 303 and persists declined status", async
 
     assertSeeOther(response, `/admin/requests/${reservationRequest.id}`);
     assert.equal((await readReservationRequests(database))[0].status, "declined");
+  });
+});
+
+test("decline ignores supplied duration and does not require one", async () => {
+  const database = await createTestDatabase();
+  const reservationRequest = await createPendingRequest(
+    database,
+    "2026-12-01 10:45",
+  );
+
+  await withTestDatabase(database, async () => {
+    const response = await POST(
+      createStatusRequest(
+        reservationRequest.id,
+        "declined",
+        "not-a-duration",
+      ),
+      createRouteProps(reservationRequest.id),
+    );
+
+    assertSeeOther(response, `/admin/requests/${reservationRequest.id}`);
+    const [persistedRequest] = await readReservationRequests(database);
+
+    assert.equal(persistedRequest.status, "declined");
+    assert.equal(persistedRequest.sessionDurationMinutes, undefined);
   });
 });
 

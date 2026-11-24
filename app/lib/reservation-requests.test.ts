@@ -255,6 +255,155 @@ test("does not derive duration from mutable operator availability", async () => 
   assert.equal(persistedRequest.sessionStartMinute, 540);
 });
 
+test("captures an explicit duration atomically when accepting a start-only request", async () => {
+  const database = await createStorePath();
+  const request = await createReservationRequestRecord(
+    {
+      eventType: "farm_stay",
+      guestEmail: "accept-duration@example.com",
+      guestName: "Accept Duration Guest",
+      requestNotes: "Keep the original request",
+      requestedDates: "2026-11-23 09:00",
+    },
+    database,
+  );
+
+  assert.equal(
+    await updateReservationRequestStatus(request.id, "accepted", database, {
+      sessionDurationMinutes: 30,
+    }),
+    "updated",
+  );
+  const [persistedRequest] = await readReservationRequests(database);
+
+  assert.equal(persistedRequest.status, "accepted");
+  assert.equal(persistedRequest.sessionDate, "2026-11-23");
+  assert.equal(persistedRequest.sessionStartMinute, 540);
+  assert.equal(persistedRequest.sessionDurationMinutes, 30);
+  assert.equal(persistedRequest.requestedDates, request.requestedDates);
+  assert.equal(persistedRequest.requestNotes, request.requestNotes);
+  assert.equal(persistedRequest.paymentStatus, "unpaid");
+  assert.equal(persistedRequest.stripeCheckoutSessionId, undefined);
+});
+
+test("requires a duration before accepting a start-only request", async () => {
+  const database = await createStorePath();
+  const request = await createReservationRequestRecord(
+    {
+      eventType: "retreat",
+      guestEmail: "missing-duration@example.com",
+      guestName: "Missing Duration Guest",
+      requestNotes: "",
+      requestedDates: "2026-11-24 10:15",
+    },
+    database,
+  );
+
+  assert.equal(
+    await updateReservationRequestStatus(request.id, "accepted", database),
+    "session_duration_required",
+  );
+  const [persistedRequest] = await readReservationRequests(database);
+
+  assert.equal(persistedRequest.status, "pending");
+  assert.equal(persistedRequest.statusUpdatedAt, undefined);
+  assert.equal(persistedRequest.sessionDurationMinutes, undefined);
+  assert.equal(persistedRequest.requestedDates, request.requestedDates);
+});
+
+test("rejects acceptance when the stored date and start are unresolved", async () => {
+  const database = await createStorePath();
+  const request = await createReservationRequestRecord(
+    {
+      eventType: "other",
+      guestEmail: "unresolved-interval@example.com",
+      guestName: "Unresolved Interval Guest",
+      requestNotes: "",
+      requestedDates: "Call to arrange a date",
+    },
+    database,
+  );
+
+  assert.equal(
+    await updateReservationRequestStatus(request.id, "accepted", database, {
+      sessionDurationMinutes: 30,
+    }),
+    "session_interval_unavailable",
+  );
+  const [persistedRequest] = await readReservationRequests(database);
+
+  assert.equal(persistedRequest.status, "pending");
+  assert.equal(persistedRequest.statusUpdatedAt, undefined);
+  assert.equal(persistedRequest.sessionDate, undefined);
+  assert.equal(persistedRequest.sessionStartMinute, undefined);
+  assert.equal(persistedRequest.sessionDurationMinutes, undefined);
+});
+
+test("rejects invalid acceptance durations without changing the request", async () => {
+  const database = await createStorePath();
+  const request = await createReservationRequestRecord(
+    {
+      eventType: "farm_stay",
+      guestEmail: "invalid-accept-duration@example.com",
+      guestName: "Invalid Accept Duration Guest",
+      requestNotes: "",
+      requestedDates: "2026-11-25 23:30",
+    },
+    database,
+  );
+
+  for (const sessionDurationMinutes of [0, -1, 1.5, 31, Number.NaN]) {
+    assert.equal(
+      await updateReservationRequestStatus(request.id, "accepted", database, {
+        sessionDurationMinutes,
+      }),
+      "invalid_session_duration",
+    );
+  }
+  const [persistedRequest] = await readReservationRequests(database);
+
+  assert.equal(persistedRequest.status, "pending");
+  assert.equal(persistedRequest.statusUpdatedAt, undefined);
+  assert.equal(persistedRequest.sessionDurationMinutes, undefined);
+});
+
+test("rejects attempts to overwrite a known duration", async () => {
+  const database = await createStorePath();
+  const request = await createReservationRequestRecord(
+    {
+      eventType: "farm_stay",
+      guestEmail: "known-duration@example.com",
+      guestName: "Known Duration Guest",
+      requestNotes: "",
+      requestedDates: "2026-11-26 09:00 to 09:30",
+    },
+    database,
+  );
+
+  assert.equal(
+    await updateReservationRequestStatus(request.id, "accepted", database, {
+      sessionDurationMinutes: 45,
+    }),
+    "invalid_session_duration",
+  );
+  let [persistedRequest] = await readReservationRequests(database);
+
+  assert.equal(persistedRequest.status, "pending");
+  assert.equal(persistedRequest.statusUpdatedAt, undefined);
+  assert.equal(persistedRequest.sessionDurationMinutes, 30);
+
+  assert.equal(
+    await updateReservationRequestStatus(request.id, "accepted", database, {
+      sessionDurationMinutes: 30,
+    }),
+    "updated",
+  );
+  [persistedRequest] = await readReservationRequests(database);
+
+  assert.equal(persistedRequest.status, "accepted");
+  assert.equal(persistedRequest.sessionDurationMinutes, 30);
+});
+
 test("accepted explicit session intervals survive operator availability changes", async () => {
   const database = await createStorePath();
 
@@ -858,7 +1007,12 @@ test("blocks a preferred-time request matching an accepted legacy start", async 
     "updated",
   );
   assert.equal(
-    await updateReservationRequestStatus(secondRequest.id, "accepted", storePath),
+    await updateReservationRequestStatus(
+      secondRequest.id,
+      "accepted",
+      storePath,
+      { sessionDurationMinutes: 30 },
+    ),
     "slot_conflict",
   );
 
@@ -874,6 +1028,7 @@ test("blocks a preferred-time request matching an accepted legacy start", async 
   assert.ok(blockedRequest);
   assert.equal(acceptedRequest.status, "accepted");
   assert.equal(blockedRequest.status, "pending");
+  assert.equal(blockedRequest.sessionDurationMinutes, undefined);
 });
 
 test("database uniqueness blocks accepted legacy and preferred values with one start", async () => {
@@ -990,6 +1145,7 @@ test("declining still works when another request for the same slot is accepted",
 
   assert.ok(updatedDeclinedRequest);
   assert.equal(updatedDeclinedRequest.status, "declined");
+  assert.equal(updatedDeclinedRequest.sessionDurationMinutes, undefined);
 });
 
 test("concurrent acceptance permits only one legacy or preferred request per start", async () => {
@@ -1017,7 +1173,9 @@ test("concurrent acceptance permits only one legacy or preferred request per sta
 
   const results = await Promise.all([
     updateReservationRequestStatus(firstRequest.id, "accepted", database),
-    updateReservationRequestStatus(secondRequest.id, "accepted", database),
+    updateReservationRequestStatus(secondRequest.id, "accepted", database, {
+      sessionDurationMinutes: 30,
+    }),
   ]);
 
   assert.deepEqual(results.sort(), ["slot_conflict", "updated"]);

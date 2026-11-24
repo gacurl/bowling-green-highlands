@@ -11,6 +11,15 @@ export type ReservationRequestStatus = "pending" | "accepted" | "declined";
 export type ReservationRequestStatusUpdate = "accepted" | "declined";
 export type ReservationPaymentStatus = "unpaid" | "paid";
 
+export type ReservationRequestStatusUpdateResult =
+  | "updated"
+  | "not_found"
+  | "invalid_transition"
+  | "session_duration_required"
+  | "session_interval_unavailable"
+  | "invalid_session_duration"
+  | "slot_conflict";
+
 export type MarkReservationRequestPaidResult =
   | "updated"
   | "already_paid"
@@ -106,6 +115,10 @@ type ReservationSessionSnapshot = {
   date: string | null;
   durationMinutes: number | null;
   startMinute: number | null;
+};
+
+type ReservationAcceptanceDetails = {
+  sessionDurationMinutes?: number;
 };
 
 const RESERVATION_REQUEST_COLUMNS = `
@@ -380,15 +393,24 @@ export async function updateReservationRequestStatus(
   requestId: string,
   status: ReservationRequestStatusUpdate,
   database?: DatabaseAccess,
-): Promise<"updated" | "not_found" | "invalid_transition" | "slot_conflict"> {
+  acceptanceDetails?: ReservationAcceptanceDetails,
+): Promise<ReservationRequestStatusUpdateResult> {
   try {
     return await getDatabase(database).transaction(async (client) => {
       const requestResult = await client.query<{
         requested_start_key: string;
+        session_date: string | null;
+        session_duration_minutes: number | null;
+        session_start_minute: number | null;
         status: ReservationRequestStatus;
       }>(
         `
-          SELECT requested_start_key, status
+          SELECT
+            requested_start_key,
+            session_date::text AS session_date,
+            session_duration_minutes,
+            session_start_minute,
+            status
           FROM reservation_requests
           WHERE id = $1
           FOR UPDATE
@@ -406,6 +428,34 @@ export async function updateReservationRequestStatus(
       }
 
       if (status === "accepted") {
+        const suppliedDuration = acceptanceDetails?.sessionDurationMinutes;
+
+        if (
+          request.session_date === null ||
+          request.session_start_minute === null
+        ) {
+          return "session_interval_unavailable";
+        }
+
+        if (request.session_duration_minutes === null) {
+          if (suppliedDuration === undefined) {
+            return "session_duration_required";
+          }
+
+          if (
+            !Number.isInteger(suppliedDuration) ||
+            suppliedDuration <= 0 ||
+            request.session_start_minute + suppliedDuration > 24 * 60
+          ) {
+            return "invalid_session_duration";
+          }
+        } else if (
+          suppliedDuration !== undefined &&
+          suppliedDuration !== request.session_duration_minutes
+        ) {
+          return "invalid_session_duration";
+        }
+
         await client.query(
           "SELECT pg_advisory_xact_lock(hashtextextended($1, 261))",
           [request.requested_start_key],
@@ -425,6 +475,27 @@ export async function updateReservationRequestStatus(
         if (conflict.rows.length > 0) {
           return "slot_conflict";
         }
+
+        await client.query(
+          `
+            UPDATE reservation_requests
+            SET session_duration_minutes = COALESCE(
+                  session_duration_minutes,
+                  $2
+                ),
+                status = $3,
+                status_updated_at = $4
+            WHERE id = $1
+          `,
+          [
+            requestId,
+            suppliedDuration ?? null,
+            status,
+            new Date().toISOString(),
+          ],
+        );
+
+        return "updated";
       }
 
       await client.query(

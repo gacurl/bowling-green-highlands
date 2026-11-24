@@ -18,6 +18,7 @@ const acceptedRequest: ReservationRequestRecord = {
   paymentStatus: "unpaid",
   requestNotes: "private notes",
   requestedDates: "2026-11-19 16:45",
+  sessionDurationMinutes: 30,
   status: "accepted",
 };
 
@@ -105,7 +106,14 @@ test("Admin shows one sendable payment URL only when payment is ready", async (t
     /Payment is already marked paid\. No payment link is needed\./,
   );
 
-  for (const request of [pendingRequest, declinedRequest]) {
+  const pendingMarkup = await renderRequestPage(pendingRequest.id);
+
+  assert.match(pendingMarkup, /Session duration/);
+  assert.match(pendingMarkup, /30 minutes/);
+  assert.match(pendingMarkup, /Accept request/);
+  assert.doesNotMatch(pendingMarkup, /name="sessionDurationMinutes"/);
+
+  for (const request of [declinedRequest]) {
     const markup = await renderRequestPage(request.id);
 
     assert.doesNotMatch(markup, /Send this payment link/i);
@@ -127,4 +135,92 @@ test("Admin shows one sendable payment URL only when payment is ready", async (t
 
   assert.doesNotMatch(localHttpMarkup, /Send this payment link/i);
   assert.match(localHttpMarkup, /A secure payment link is not available\./);
+});
+
+test("Admin captures missing duration without blocking independent decline", async (t) => {
+  const pendingDurationRequest: ReservationRequestRecord = {
+    ...acceptedRequest,
+    id: "pending-duration-id",
+    requestedDates: "2026-12-01 09:00",
+    sessionDurationMinutes: undefined,
+    status: "pending",
+  };
+  const unresolvedRequest: ReservationRequestRecord = {
+    ...pendingDurationRequest,
+    id: "unresolved-id",
+    requestedDates: "Call to arrange a date",
+  };
+  const acceptedIncompleteRequest: ReservationRequestRecord = {
+    ...pendingDurationRequest,
+    id: "accepted-incomplete-id",
+    status: "accepted",
+  };
+  const database = await createTestDatabase();
+
+  setDatabaseForTests(database);
+  await writeReservationRequests([
+    pendingDurationRequest,
+    unresolvedRequest,
+    acceptedIncompleteRequest,
+  ]);
+  t.after(() => {
+    setDatabaseForTests(null);
+  });
+
+  async function renderRequestPage(requestId: string) {
+    return renderToStaticMarkup(
+      await RequestDetailPage({
+        params: Promise.resolve({ requestId }),
+      }),
+    );
+  }
+
+  const durationMarkup = await renderRequestPage(pendingDurationRequest.id);
+  const durationInput = durationMarkup.match(
+    /<input[^>]*name="sessionDurationMinutes"[^>]*>/,
+  )?.[0];
+
+  assert.match(durationMarkup, /Session duration \(minutes\)/);
+  assert.match(durationMarkup, /Session duration<\/dt><dd>Not recorded/);
+  assert.ok(durationInput);
+  assert.match(durationInput, /type="number"/);
+  assert.match(durationInput, /min="1"/);
+  assert.match(durationInput, /max="900"/);
+  assert.match(durationInput, /step="1"/);
+  assert.match(durationInput, /required=""/);
+  assert.doesNotMatch(durationInput, /value=/);
+  assert.ok(
+    durationMarkup.indexOf("Accept request") <
+      durationMarkup.indexOf("Decline request"),
+  );
+  assert.equal(
+    durationMarkup.split(
+      `action="/admin/requests/${pendingDurationRequest.id}/status"`,
+    ).length - 1,
+    2,
+  );
+
+  const unresolvedMarkup = await renderRequestPage(unresolvedRequest.id);
+
+  assert.match(
+    unresolvedMarkup,
+    /Acceptance is unavailable because this request does not have a reliable date and start time\./,
+  );
+  assert.doesNotMatch(unresolvedMarkup, /Accept request/);
+  assert.doesNotMatch(unresolvedMarkup, /name="sessionDurationMinutes"/);
+  assert.match(unresolvedMarkup, /Decline request/);
+  assert.equal(
+    unresolvedMarkup.split(
+      `action="/admin/requests/${unresolvedRequest.id}/status"`,
+    ).length - 1,
+    1,
+  );
+
+  const historicalMarkup = await renderRequestPage(
+    acceptedIncompleteRequest.id,
+  );
+
+  assert.match(historicalMarkup, /Session duration<\/dt><dd>Not recorded/);
+  assert.doesNotMatch(historicalMarkup, /Accept request/);
+  assert.doesNotMatch(historicalMarkup, /Decline request/);
 });
