@@ -175,6 +175,21 @@ export function getRequestStatusErrorMessage(
         title: "Another request is already accepted for this slot.",
         body: "No status change was saved. Decline this request or review the accepted request first.",
       };
+    case "session_duration_required":
+      return {
+        title: "Enter a session duration before accepting.",
+        body: "No status change was saved. Enter the planned number of minutes and try again.",
+      };
+    case "invalid_session_duration":
+      return {
+        title: "Enter a valid session duration.",
+        body: "No status change was saved. Use a whole number of minutes that ends by midnight, then try again.",
+      };
+    case "session_interval_unavailable":
+      return {
+        title: "This request cannot be accepted yet.",
+        body: "No status change was saved because the request does not have a reliable date and start time.",
+      };
     default:
       return null;
   }

@@ -202,6 +202,7 @@ test("accepted legacy and preferred starts conflict while pending and declined d
         preferredAccepted.id,
         "accepted",
         database,
+        { sessionDurationMinutes: 30 },
       ),
       "updated",
     );

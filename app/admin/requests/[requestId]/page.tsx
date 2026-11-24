@@ -44,7 +44,9 @@ export default async function RequestDetailPage({
       title="Reservation request"
       description={
         requestDetail.status === "pending"
-          ? "Review this pending request and choose one action."
+          ? requestDetail.canAccept
+            ? "Review this pending request and choose one action."
+            : "Review this pending request. It needs a reliable date and start time before it can be accepted."
           : "Request details. This request status is already set."
       }
       action={
@@ -69,7 +71,9 @@ export default async function RequestDetailPage({
       <article className="rounded-3xl border border-[#D8CDBA] bg-[#FDF8EF] p-4 shadow-sm sm:p-6">
         {requestDetail.status === "pending" ? (
           <p className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
-            Needs action: accept or decline this request.
+            {requestDetail.canAccept
+              ? "Needs action: accept or decline this request."
+              : "Needs action: this request cannot be accepted without a reliable date and start time."}
           </p>
         ) : null}
         <dl className="space-y-3 text-sm text-[#4F4B3F]">
@@ -112,6 +116,10 @@ export default async function RequestDetailPage({
             <dd>{requestDetail.requestedSlotLabel}</dd>
           </div>
           <div>
+            <dt className="font-medium text-[#2B2922]">Session duration</dt>
+            <dd>{requestDetail.sessionDurationLabel}</dd>
+          </div>
+          <div>
             <dt className="font-medium text-[#2B2922]">Notes</dt>
             <dd>{requestDetail.requestNotes || "None provided"}</dd>
           </div>
@@ -149,28 +157,63 @@ export default async function RequestDetailPage({
           </p>
         ) : null}
         {requestDetail.status === "pending" ? (
-          <form
-            action={`/admin/requests/${requestDetail.id}/status`}
-            method="post"
-            className="mt-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center"
-          >
-            <button
-              type="submit"
-              name="status"
-              value="accepted"
-              className="inline-flex min-h-11 w-full items-center justify-center rounded-full bg-[#2F4A35] px-5 py-2 text-sm font-medium text-[#FFF8EA] transition-colors hover:bg-[#B86748] sm:w-auto"
+          <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
+            {requestDetail.canAccept ? (
+              <form
+                action={`/admin/requests/${requestDetail.id}/status`}
+                method="post"
+                className="flex w-full flex-col gap-3 sm:w-auto"
+              >
+                {requestDetail.requiresDurationForAcceptance ? (
+                  <div className="grid gap-2">
+                    <label
+                      htmlFor="session-duration-minutes"
+                      className="text-sm font-medium text-[#2B2922]"
+                    >
+                      Session duration (minutes)
+                    </label>
+                    <input
+                      id="session-duration-minutes"
+                      name="sessionDurationMinutes"
+                      type="number"
+                      min={1}
+                      max={requestDetail.maximumSessionDurationMinutes ?? undefined}
+                      step={1}
+                      required
+                      inputMode="numeric"
+                      className="min-h-11 w-full rounded-xl border border-[#CFC3AE] bg-white px-3 py-2 text-base text-[#2B2922] sm:w-48"
+                    />
+                  </div>
+                ) : null}
+                <button
+                  type="submit"
+                  name="status"
+                  value="accepted"
+                  className="inline-flex min-h-11 w-full items-center justify-center rounded-full bg-[#2F4A35] px-5 py-2 text-sm font-medium text-[#FFF8EA] transition-colors hover:bg-[#B86748] sm:w-auto"
+                >
+                  Accept request
+                </button>
+              </form>
+            ) : (
+              <p className="w-full rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                Acceptance is unavailable because this request does not have a
+                reliable date and start time.
+              </p>
+            )}
+            <form
+              action={`/admin/requests/${requestDetail.id}/status`}
+              method="post"
             >
-              Accept request
-            </button>
-            <button
-              type="submit"
-              name="status"
-              value="declined"
-              className="inline-flex min-h-11 w-full items-center justify-center rounded-full border border-stone-300 bg-stone-100 px-5 py-2 text-sm font-medium text-stone-800 transition-colors hover:bg-stone-200 sm:w-auto"
-            >
-              Decline request
-            </button>
-          </form>
+              <button
+                type="submit"
+                name="status"
+                value="declined"
+                className="inline-flex min-h-11 w-full items-center justify-center rounded-full border border-stone-300 bg-stone-100 px-5 py-2 text-sm font-medium text-stone-800 transition-colors hover:bg-stone-200 sm:w-auto"
+              >
+                Decline request
+              </button>
+            </form>
+          </div>
         ) : requestDetail.status === "declined" ? (
           <p className="mt-6 rounded-2xl border border-[#D8CDBA] bg-[#F6F0E6] px-4 py-3 text-sm text-[#4F4B3F]">
             This request is declined. No payment link is available.

@@ -13,6 +13,9 @@ const requests: ReservationRequestRecord[] = [
     id: "first-id",
     requestNotes: "First note",
     requestedDates: "2026-06-14 09:00 to 09:30",
+    sessionDate: "2026-06-14",
+    sessionDurationMinutes: 30,
+    sessionStartMinute: 540,
     status: "pending",
   },
 ];
@@ -41,6 +44,10 @@ test("returns a friendly request detail item for a known request id", () => {
   assert.equal(requestDetailItem.paymentStatusLabel, "Unpaid");
   assert.equal(requestDetailItem.statusUpdatedAtLabel, null);
   assert.equal(requestDetailItem.publicPaymentUrl, null);
+  assert.equal(requestDetailItem.sessionDurationLabel, "30 minutes");
+  assert.equal(requestDetailItem.canAccept, true);
+  assert.equal(requestDetailItem.requiresDurationForAcceptance, false);
+  assert.equal(requestDetailItem.maximumSessionDurationMinutes, 900);
 });
 
 test("returns null for an unknown request id", () => {
@@ -53,6 +60,8 @@ test("formats preferred-time request details for Admin display", () => {
   const preferredTimeRequest: ReservationRequestRecord = {
     ...requests[0],
     requestedDates: "2026-11-19 16:45",
+    sessionDate: "2026-11-19",
+    sessionStartMinute: 1005,
   };
   const requestDetailItem = toReservationRequestDetailItem(
     [preferredTimeRequest],
@@ -63,6 +72,65 @@ test("formats preferred-time request details for Admin display", () => {
     requestDetailItem?.requestedSlotLabel,
     "Thursday, November 19, 2026 at 4:45 PM Eastern Time",
   );
+});
+
+test("requires an empty duration capture only for a pending reliable start", () => {
+  const preferredTimeRequest: ReservationRequestRecord = {
+    ...requests[0],
+    requestedDates: "2026-11-19 16:45",
+    sessionDate: "2026-11-19",
+    sessionDurationMinutes: undefined,
+    sessionStartMinute: 1005,
+  };
+  const requestDetailItem = toReservationRequestDetailItem(
+    [preferredTimeRequest],
+    preferredTimeRequest.id,
+  );
+
+  assert.ok(requestDetailItem);
+  assert.equal(requestDetailItem.sessionDurationLabel, "Not recorded");
+  assert.equal(requestDetailItem.canAccept, true);
+  assert.equal(requestDetailItem.requiresDurationForAcceptance, true);
+  assert.equal(requestDetailItem.maximumSessionDurationMinutes, 435);
+});
+
+test("prevents acceptance when the canonical date and start are unresolved", () => {
+  const unresolvedRequest: ReservationRequestRecord = {
+    ...requests[0],
+    requestedDates: "Call to arrange a date",
+    sessionDate: undefined,
+    sessionDurationMinutes: undefined,
+    sessionStartMinute: undefined,
+  };
+  const requestDetailItem = toReservationRequestDetailItem(
+    [unresolvedRequest],
+    unresolvedRequest.id,
+  );
+
+  assert.ok(requestDetailItem);
+  assert.equal(requestDetailItem.sessionDurationLabel, "Not recorded");
+  assert.equal(requestDetailItem.canAccept, false);
+  assert.equal(requestDetailItem.requiresDurationForAcceptance, false);
+  assert.equal(requestDetailItem.maximumSessionDurationMinutes, null);
+});
+
+test("reports incomplete historical records without offering acceptance", () => {
+  for (const status of ["accepted", "declined"] as const) {
+    const historicalRequest: ReservationRequestRecord = {
+      ...requests[0],
+      sessionDurationMinutes: undefined,
+      status,
+    };
+    const requestDetailItem = toReservationRequestDetailItem(
+      [historicalRequest],
+      historicalRequest.id,
+    );
+
+    assert.ok(requestDetailItem);
+    assert.equal(requestDetailItem.sessionDurationLabel, "Not recorded");
+    assert.equal(requestDetailItem.canAccept, false);
+    assert.equal(requestDetailItem.requiresDurationForAcceptance, false);
+  }
 });
 
 test("returns a status-updated label when a timestamp is present", () => {
