@@ -4,6 +4,7 @@ import {
   type DatabaseAccess,
   type DatabaseQueryable,
 } from "../../lib/server/database";
+import { deriveReservationSessionInterval } from "../../lib/requested-slot";
 import type { EventTypeValue } from "./event-type";
 
 export type ReservationRequestStatus = "pending" | "accepted" | "declined";
@@ -34,6 +35,9 @@ export type ReservationRequestRecord = {
   paymentStatus?: ReservationPaymentStatus;
   requestNotes: string;
   requestedDates: string;
+  sessionDate?: string;
+  sessionDurationMinutes?: number;
+  sessionStartMinute?: number;
   status: ReservationRequestStatus;
   statusUpdatedAt?: string;
   stripeCheckoutSessionId?: string;
@@ -80,6 +84,9 @@ type ReservationRequestRow = {
   request_notes: string;
   requested_dates: string;
   requested_start_key: string;
+  session_date: string | null;
+  session_duration_minutes: number | null;
+  session_start_minute: number | null;
   status: ReservationRequestStatus;
   status_updated_at: string | null;
   stripe_checkout_session_id: string | null;
@@ -92,6 +99,13 @@ type CreateReservationRequestInput = {
   guestName: string;
   requestNotes: string;
   requestedDates: string;
+  sessionDurationMinutes?: number;
+};
+
+type ReservationSessionSnapshot = {
+  date: string | null;
+  durationMinutes: number | null;
+  startMinute: number | null;
 };
 
 const RESERVATION_REQUEST_COLUMNS = `
@@ -104,6 +118,9 @@ const RESERVATION_REQUEST_COLUMNS = `
   request_notes,
   requested_dates,
   requested_start_key,
+  session_date::text AS session_date,
+  session_duration_minutes,
+  session_start_minute,
   status,
   status_updated_at,
   stripe_checkout_session_id,
@@ -114,6 +131,66 @@ export function isReservationRequestStatusUpdate(
   value: string,
 ): value is ReservationRequestStatusUpdate {
   return value === "accepted" || value === "declined";
+}
+
+function resolveReservationSessionSnapshot(
+  requestedDates: string,
+  explicitDurationMinutes?: number,
+): ReservationSessionSnapshot {
+  const derivedInterval = deriveReservationSessionInterval(requestedDates);
+
+  if (!derivedInterval) {
+    if (explicitDurationMinutes !== undefined) {
+      throw new Error("Session duration requires a reliable requested start");
+    }
+
+    return {
+      date: null,
+      durationMinutes: null,
+      startMinute: null,
+    };
+  }
+
+  if (
+    explicitDurationMinutes !== undefined &&
+    (!Number.isInteger(explicitDurationMinutes) ||
+      explicitDurationMinutes <= 0 ||
+      derivedInterval.startMinute + explicitDurationMinutes > 24 * 60)
+  ) {
+    throw new Error("Session duration is invalid");
+  }
+
+  if (
+    explicitDurationMinutes !== undefined &&
+    derivedInterval.durationMinutes !== null &&
+    explicitDurationMinutes !== derivedInterval.durationMinutes
+  ) {
+    throw new Error("Session duration conflicts with the requested range");
+  }
+
+  return {
+    date: derivedInterval.date,
+    durationMinutes:
+      explicitDurationMinutes ?? derivedInterval.durationMinutes,
+    startMinute: derivedInterval.startMinute,
+  };
+}
+
+function toReservationSessionRecordFields(
+  snapshot: ReservationSessionSnapshot,
+): Pick<
+  ReservationRequestRecord,
+  "sessionDate" | "sessionDurationMinutes" | "sessionStartMinute"
+> {
+  return {
+    ...(snapshot.date === null ? {} : { sessionDate: snapshot.date }),
+    ...(snapshot.durationMinutes === null
+      ? {}
+      : { sessionDurationMinutes: snapshot.durationMinutes }),
+    ...(snapshot.startMinute === null
+      ? {}
+      : { sessionStartMinute: snapshot.startMinute }),
+  };
 }
 
 function toReservationRequestRecord(
@@ -128,6 +205,11 @@ function toReservationRequestRecord(
     paymentStatus: row.payment_status,
     requestNotes: row.request_notes,
     requestedDates: row.requested_dates,
+    ...toReservationSessionRecordFields({
+      date: row.session_date,
+      durationMinutes: row.session_duration_minutes,
+      startMinute: row.session_start_minute,
+    }),
     status: row.status,
     statusUpdatedAt: row.status_updated_at ?? undefined,
     stripeCheckoutSessionId: row.stripe_checkout_session_id ?? undefined,
@@ -169,6 +251,20 @@ export async function writeReservationRequests(
     await client.query("DELETE FROM reservation_requests");
 
     for (const request of requests) {
+      const sessionSnapshot = resolveReservationSessionSnapshot(
+        request.requestedDates,
+        request.sessionDurationMinutes,
+      );
+
+      if (
+        (request.sessionDate !== undefined &&
+          request.sessionDate !== sessionSnapshot.date) ||
+        (request.sessionStartMinute !== undefined &&
+          request.sessionStartMinute !== sessionSnapshot.startMinute)
+      ) {
+        throw new Error("Reservation session snapshot is inconsistent");
+      }
+
       await client.query(
         `
           INSERT INTO reservation_requests (
@@ -180,12 +276,18 @@ export async function writeReservationRequests(
             payment_status,
             request_notes,
             requested_dates,
+            session_date,
+            session_duration_minutes,
+            session_start_minute,
             status,
             status_updated_at,
             stripe_checkout_session_id,
             stripe_checkout_session_retryable
           )
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+          VALUES (
+            $1, $2, $3, $4, $5, $6, $7, $8, $9,
+            $10, $11, $12, $13, $14, $15
+          )
         `,
         [
           request.id,
@@ -196,6 +298,9 @@ export async function writeReservationRequests(
           request.paymentStatus ?? "unpaid",
           request.requestNotes,
           request.requestedDates,
+          sessionSnapshot.date,
+          sessionSnapshot.durationMinutes,
+          sessionSnapshot.startMinute,
           request.status,
           request.statusUpdatedAt ?? null,
           request.stripeCheckoutSessionId ?? null,
@@ -213,9 +318,14 @@ export async function createReservationRequestRecord(
     guestName,
     requestNotes,
     requestedDates,
+    sessionDurationMinutes,
   }: CreateReservationRequestInput,
   database?: DatabaseAccess,
-) {
+): Promise<ReservationRequestRecord> {
+  const sessionSnapshot = resolveReservationSessionSnapshot(
+    requestedDates,
+    sessionDurationMinutes,
+  );
   const requestRecord: ReservationRequestRecord = {
     createdAt: new Date().toISOString(),
     eventType,
@@ -225,6 +335,7 @@ export async function createReservationRequestRecord(
     paymentStatus: "unpaid",
     requestNotes,
     requestedDates,
+    ...toReservationSessionRecordFields(sessionSnapshot),
     status: "pending",
   };
 
@@ -239,9 +350,12 @@ export async function createReservationRequestRecord(
         payment_status,
         request_notes,
         requested_dates,
+        session_date,
+        session_duration_minutes,
+        session_start_minute,
         status
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
     `,
     [
       requestRecord.id,
@@ -252,6 +366,9 @@ export async function createReservationRequestRecord(
       requestRecord.paymentStatus,
       requestRecord.requestNotes,
       requestRecord.requestedDates,
+      sessionSnapshot.date,
+      sessionSnapshot.durationMinutes,
+      sessionSnapshot.startMinute,
       requestRecord.status,
     ],
   );

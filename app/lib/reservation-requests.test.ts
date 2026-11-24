@@ -75,9 +75,15 @@ test("stores and reads pending reservation requests", async () => {
   assert.equal(reservationRequests[0].status, "pending");
   assert.equal(reservationRequests[0].paymentStatus, "unpaid");
   assert.equal(reservationRequests[0].id, firstRequest.id);
+  assert.equal(reservationRequests[0].sessionDate, "2026-06-14");
+  assert.equal(reservationRequests[0].sessionDurationMinutes, 30);
+  assert.equal(reservationRequests[0].sessionStartMinute, 540);
   assert.equal(reservationRequests[1].status, "pending");
   assert.equal(reservationRequests[1].paymentStatus, "unpaid");
   assert.equal(reservationRequests[1].id, secondRequest.id);
+  assert.equal(reservationRequests[1].sessionDate, "2026-06-15");
+  assert.equal(reservationRequests[1].sessionDurationMinutes, 30);
+  assert.equal(reservationRequests[1].sessionStartMinute, 600);
   assert.ok(!Number.isNaN(Date.parse(reservationRequests[0].createdAt)));
   assert.ok(!Number.isNaN(Date.parse(reservationRequests[1].createdAt)));
 });
@@ -104,9 +110,17 @@ test("stores and reads preferred-time values without rewriting them", async () =
       await database.query<{
         requested_dates: string;
         requested_start_key: string;
+        session_date: string;
+        session_duration_minutes: number | null;
+        session_start_minute: number;
       }>(
         `
-          SELECT requested_dates, requested_start_key
+          SELECT
+            requested_dates,
+            requested_start_key,
+            session_date::text AS session_date,
+            session_duration_minutes,
+            session_start_minute
           FROM reservation_requests
           WHERE id = $1
         `,
@@ -116,8 +130,171 @@ test("stores and reads preferred-time values without rewriting them", async () =
     {
       requested_dates: "2026-11-19 16:45",
       requested_start_key: "2026-11-19 16:45",
+      session_date: "2026-11-19",
+      session_duration_minutes: null,
+      session_start_minute: 1005,
     },
   );
+  assert.equal(request.sessionDate, "2026-11-19");
+  assert.equal(request.sessionDurationMinutes, undefined);
+  assert.equal(request.sessionStartMinute, 1005);
+});
+
+test("stores an explicit duration for a reliable start-only request", async () => {
+  const database = await createStorePath();
+  const request = await createReservationRequestRecord(
+    {
+      eventType: "farm_stay",
+      guestEmail: "duration@example.com",
+      guestName: "Duration Guest",
+      requestNotes: "",
+      requestedDates: "2026-11-20 23:30",
+      sessionDurationMinutes: 30,
+    },
+    database,
+  );
+
+  assert.equal(request.sessionDate, "2026-11-20");
+  assert.equal(request.sessionDurationMinutes, 30);
+  assert.equal(request.sessionStartMinute, 1410);
+  const [persistedRequest] = await readReservationRequests(database);
+
+  assert.equal(persistedRequest.id, request.id);
+  assert.equal(persistedRequest.sessionDate, request.sessionDate);
+  assert.equal(
+    persistedRequest.sessionDurationMinutes,
+    request.sessionDurationMinutes,
+  );
+  assert.equal(persistedRequest.sessionStartMinute, request.sessionStartMinute);
+});
+
+test("rejects invalid or conflicting explicit session durations", async () => {
+  const database = await createStorePath();
+  const baseInput = {
+    eventType: "farm_stay" as const,
+    guestEmail: "invalid-duration@example.com",
+    guestName: "Invalid Duration Guest",
+    requestNotes: "",
+  };
+
+  for (const [requestedDates, sessionDurationMinutes] of [
+    ["2026-11-20 09:00", 0],
+    ["2026-11-20 09:00", 30.5],
+    ["2026-11-20 23:30", 31],
+    ["2026-11-20 09:00 to 09:30", 20],
+    ["legacy free-form value", 30],
+  ] as const) {
+    await assert.rejects(
+      createReservationRequestRecord(
+        {
+          ...baseInput,
+          requestedDates,
+          sessionDurationMinutes,
+        },
+        database,
+      ),
+    );
+  }
+
+  assert.deepEqual(await readReservationRequests(database), []);
+});
+
+test("leaves ambiguous raw values unresolved", async () => {
+  const database = await createStorePath();
+  const request = await createReservationRequestRecord(
+    {
+      eventType: "other",
+      guestEmail: "ambiguous@example.com",
+      guestName: "Ambiguous Guest",
+      requestNotes: "",
+      requestedDates: "2026-11-20 23:30 to 00:30",
+    },
+    database,
+  );
+  const [persistedRequest] = await readReservationRequests(database);
+
+  assert.equal(persistedRequest.requestedDates, request.requestedDates);
+  assert.equal(persistedRequest.sessionDate, undefined);
+  assert.equal(persistedRequest.sessionDurationMinutes, undefined);
+  assert.equal(persistedRequest.sessionStartMinute, undefined);
+});
+
+test("does not derive duration from mutable operator availability", async () => {
+  const database = await createStorePath();
+
+  await database.query(`
+    INSERT INTO operator_availability (
+      availability_date,
+      duration_minutes,
+      mode,
+      start_minute
+    )
+    VALUES ('2026-11-21', 120, 'available', 540)
+  `);
+  const request = await createReservationRequestRecord(
+    {
+      eventType: "retreat",
+      guestEmail: "availability-independent@example.com",
+      guestName: "Availability Independent Guest",
+      requestNotes: "",
+      requestedDates: "2026-11-21 09:00",
+    },
+    database,
+  );
+
+  await database.query(`
+    UPDATE operator_availability
+    SET duration_minutes = 20
+    WHERE availability_date = '2026-11-21'
+  `);
+  const [persistedRequest] = await readReservationRequests(database);
+
+  assert.equal(persistedRequest.id, request.id);
+  assert.equal(persistedRequest.sessionDate, "2026-11-21");
+  assert.equal(persistedRequest.sessionDurationMinutes, undefined);
+  assert.equal(persistedRequest.sessionStartMinute, 540);
+});
+
+test("accepted explicit session intervals survive operator availability changes", async () => {
+  const database = await createStorePath();
+
+  await database.query(`
+    INSERT INTO operator_availability (
+      availability_date,
+      duration_minutes,
+      mode,
+      start_minute
+    )
+    VALUES ('2026-11-22', 120, 'available', 540)
+  `);
+  const request = await createReservationRequestRecord(
+    {
+      eventType: "retreat",
+      guestEmail: "accepted-interval@example.com",
+      guestName: "Accepted Interval Guest",
+      requestNotes: "",
+      requestedDates: "2026-11-22 09:00",
+      sessionDurationMinutes: 30,
+    },
+    database,
+  );
+
+  assert.equal(
+    await updateReservationRequestStatus(request.id, "accepted", database),
+    "updated",
+  );
+  await database.query(`
+    UPDATE operator_availability
+    SET duration_minutes = 20,
+        start_minute = 600
+    WHERE availability_date = '2026-11-22'
+  `);
+  const [persistedRequest] = await readReservationRequests(database);
+
+  assert.equal(persistedRequest.status, "accepted");
+  assert.equal(persistedRequest.sessionDate, "2026-11-22");
+  assert.equal(persistedRequest.sessionStartMinute, 540);
+  assert.equal(persistedRequest.sessionDurationMinutes, 30);
 });
 
 test("updates a pending request to accepted", async () => {
