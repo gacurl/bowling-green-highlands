@@ -1,4 +1,4 @@
-import type { Slot } from "./slots";
+import { toMinutes, type Slot } from "./slots";
 import { isOperatorAvailabilityDate } from "./operator-availability";
 
 type RequestedSlotValue = {
@@ -7,8 +7,15 @@ type RequestedSlotValue = {
   startTime: string;
 };
 
+export type ReservationSessionInterval = {
+  date: string;
+  durationMinutes: number | null;
+  startMinute: number;
+};
+
 const REQUESTED_SLOT_PATTERN =
   /^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2})(?: to (\d{2}:\d{2}))?$/;
+const MINUTES_PER_DAY = 24 * 60;
 
 function isIsoDate(value: string) {
   return isOperatorAvailabilityDate(value);
@@ -60,6 +67,48 @@ export function parseRequestedSlotValue(
   }
 
   return parsedValue;
+}
+
+export function deriveReservationSessionInterval(
+  requestedSlotValue: string,
+): ReservationSessionInterval | null {
+  const requestedSlot = parseRequestedSlotValue(requestedSlotValue);
+
+  if (!requestedSlot) {
+    return null;
+  }
+
+  const startMinute = toMinutes(requestedSlot.startTime);
+
+  if (startMinute === null) {
+    return null;
+  }
+
+  if (requestedSlot.endTime === undefined) {
+    return {
+      date: requestedSlot.date,
+      durationMinutes: null,
+      startMinute,
+    };
+  }
+
+  const endMinute = toMinutes(requestedSlot.endTime);
+
+  if (endMinute === null || endMinute <= startMinute) {
+    return null;
+  }
+
+  const durationMinutes = endMinute - startMinute;
+
+  if (startMinute + durationMinutes > MINUTES_PER_DAY) {
+    return null;
+  }
+
+  return {
+    date: requestedSlot.date,
+    durationMinutes,
+    startMinute,
+  };
 }
 
 export function formatRequestedSlotLabel(requestedSlotValue: string) {

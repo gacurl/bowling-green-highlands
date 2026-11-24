@@ -553,7 +553,7 @@ test("database-scoped target ignores session and role spoofing", async (t) => {
         "SELECT count(*)::int AS count FROM bgh_schema_migrations",
       )
     ).rows[0].count,
-    4,
+    5,
   );
 });
 
@@ -575,6 +575,7 @@ test("confirmed Production target applies migrations", async (t) => {
     "0002_operator_availability_windows.sql",
     "0003_reservation_start_conflict_key.sql",
     "0004_stripe_checkout_session_guard.sql",
+    "0005_reservation_session_intervals.sql",
   ]);
   await assertEffectiveRuntimePrivileges(
     environment.pool,
@@ -594,6 +595,7 @@ test("availability windows migration backfills and constrains legacy rows", asyn
       "0002_operator_availability_windows.sql",
       "0003_reservation_start_conflict_key.sql",
       "0004_stripe_checkout_session_guard.sql",
+      "0005_reservation_session_intervals.sql",
     ],
   );
 
@@ -972,6 +974,270 @@ test("Checkout Session guard migration backfills safely and enforces session own
   );
 });
 
+test("reservation session migration backfills only reliable intervals", async (t) => {
+  const environment = await createMigrationEnvironment();
+  t.after(environment.cleanup);
+  const migrations = await loadMigrations();
+
+  for (const migration of migrations.slice(0, 4)) {
+    await environment.pool.query(migration.sql);
+  }
+  await environment.pool.query(`
+    INSERT INTO reservation_requests (
+      id,
+      created_at,
+      event_type,
+      guest_email,
+      guest_name,
+      payment_status,
+      request_notes,
+      requested_dates,
+      status,
+      status_updated_at,
+      stripe_checkout_session_id,
+      stripe_checkout_session_retryable
+    )
+    VALUES
+      (
+        'reliable-range',
+        '2026-06-14T08:00:00.000Z',
+        'farm_stay',
+        'range@example.com',
+        'Range Guest',
+        'paid',
+        '',
+        '2026-06-14 09:00 to 09:30',
+        'accepted',
+        '2026-06-15T08:00:00.000Z',
+        'cs_test_preserved',
+        FALSE
+      ),
+      (
+        'known-start',
+        '2026-06-14T08:05:00.000Z',
+        'retreat',
+        'start@example.com',
+        'Start Guest',
+        'unpaid',
+        '',
+        '2026-06-15 10:15',
+        'pending',
+        NULL,
+        NULL,
+        FALSE
+      ),
+      (
+        'free-form',
+        '2026-06-14T08:10:00.000Z',
+        'other',
+        'free-form@example.com',
+        'Free Form Guest',
+        'unpaid',
+        '',
+        'legacy free-form value',
+        'declined',
+        '2026-06-15T08:10:00.000Z',
+        NULL,
+        FALSE
+      ),
+      (
+        'invalid-date',
+        '2026-06-14T08:15:00.000Z',
+        'wedding',
+        'invalid-date@example.com',
+        'Invalid Date Guest',
+        'unpaid',
+        '',
+        '2026-02-30 11:00 to 11:30',
+        'pending',
+        NULL,
+        NULL,
+        FALSE
+      ),
+      (
+        'invalid-clock',
+        '2026-06-14T08:20:00.000Z',
+        'farm_stay',
+        'invalid-clock@example.com',
+        'Invalid Clock Guest',
+        'unpaid',
+        '',
+        '2026-06-16 24:00',
+        'pending',
+        NULL,
+        NULL,
+        FALSE
+      ),
+      (
+        'equal-range',
+        '2026-06-14T08:25:00.000Z',
+        'retreat',
+        'equal@example.com',
+        'Equal Guest',
+        'unpaid',
+        '',
+        '2026-06-17 12:00 to 12:00',
+        'pending',
+        NULL,
+        NULL,
+        FALSE
+      ),
+      (
+        'overnight-range',
+        '2026-06-14T08:30:00.000Z',
+        'other',
+        'overnight@example.com',
+        'Overnight Guest',
+        'unpaid',
+        '',
+        '2026-06-18 23:30 to 00:30',
+        'pending',
+        NULL,
+        NULL,
+        FALSE
+      )
+  `);
+
+  await environment.pool.query(migrations[4].sql);
+
+  const rows = await environment.pool.query(`
+    SELECT
+      id,
+      payment_status,
+      requested_dates,
+      session_date::text AS session_date,
+      session_duration_minutes,
+      session_start_minute,
+      status,
+      status_updated_at,
+      stripe_checkout_session_id,
+      stripe_checkout_session_retryable
+    FROM reservation_requests
+    ORDER BY sequence_id ASC
+  `);
+
+  assert.deepEqual(rows.rows, [
+    {
+      id: "reliable-range",
+      payment_status: "paid",
+      requested_dates: "2026-06-14 09:00 to 09:30",
+      session_date: "2026-06-14",
+      session_duration_minutes: 30,
+      session_start_minute: 540,
+      status: "accepted",
+      status_updated_at: "2026-06-15T08:00:00.000Z",
+      stripe_checkout_session_id: "cs_test_preserved",
+      stripe_checkout_session_retryable: false,
+    },
+    {
+      id: "known-start",
+      payment_status: "unpaid",
+      requested_dates: "2026-06-15 10:15",
+      session_date: "2026-06-15",
+      session_duration_minutes: null,
+      session_start_minute: 615,
+      status: "pending",
+      status_updated_at: null,
+      stripe_checkout_session_id: null,
+      stripe_checkout_session_retryable: false,
+    },
+    {
+      id: "free-form",
+      payment_status: "unpaid",
+      requested_dates: "legacy free-form value",
+      session_date: null,
+      session_duration_minutes: null,
+      session_start_minute: null,
+      status: "declined",
+      status_updated_at: "2026-06-15T08:10:00.000Z",
+      stripe_checkout_session_id: null,
+      stripe_checkout_session_retryable: false,
+    },
+    ...["invalid-date", "invalid-clock", "equal-range", "overnight-range"].map(
+      (id) => ({
+        id,
+        payment_status: "unpaid",
+        requested_dates: {
+          "invalid-date": "2026-02-30 11:00 to 11:30",
+          "invalid-clock": "2026-06-16 24:00",
+          "equal-range": "2026-06-17 12:00 to 12:00",
+          "overnight-range": "2026-06-18 23:30 to 00:30",
+        }[id],
+        session_date: null,
+        session_duration_minutes: null,
+        session_start_minute: null,
+        status: "pending",
+        status_updated_at: null,
+        stripe_checkout_session_id: null,
+        stripe_checkout_session_retryable: false,
+      }),
+    ),
+  ]);
+
+  await assert.rejects(
+    environment.pool.query(`
+      UPDATE reservation_requests
+      SET session_date = NULL
+      WHERE id = 'known-start'
+    `),
+    /reservation_requests_session_start_complete/,
+  );
+  await assert.rejects(
+    environment.pool.query(`
+      UPDATE reservation_requests
+      SET session_start_minute = 616
+      WHERE id = 'known-start'
+    `),
+    /reservation_requests_session_snapshot_matches_request/,
+  );
+  await assert.rejects(
+    environment.pool.query(`
+      UPDATE reservation_requests
+      SET session_start_minute = 1440
+      WHERE id = 'known-start'
+    `),
+    /reservation_requests_session_(start_minute_valid|snapshot_matches_request)/,
+  );
+  await assert.rejects(
+    environment.pool.query(`
+      UPDATE reservation_requests
+      SET session_duration_minutes = 0
+      WHERE id = 'known-start'
+    `),
+    /reservation_requests_session_duration_valid/,
+  );
+  await assert.rejects(
+    environment.pool.query(`
+      UPDATE reservation_requests
+      SET session_duration_minutes = 826
+      WHERE id = 'known-start'
+    `),
+    /reservation_requests_session_duration_valid/,
+  );
+  await environment.pool.query(`
+    UPDATE reservation_requests
+    SET session_duration_minutes = 825
+    WHERE id = 'known-start'
+  `);
+  await assert.rejects(
+    environment.pool.query(`
+      UPDATE reservation_requests
+      SET session_duration_minutes = 31
+      WHERE id = 'reliable-range'
+    `),
+    /reservation_requests_session_snapshot_matches_request/,
+  );
+
+  const index = await environment.pool.query(`
+    SELECT pg_get_indexdef(
+      'reservation_requests_one_accepted_exact_slot'::regclass
+    ) AS definition
+  `);
+
+  assert.match(index.rows[0].definition, /\(requested_start_key\)/);
+  assert.match(index.rows[0].definition, /status = 'accepted'/);
+});
+
 test("migration and runtime roles must be distinct", async (t) => {
   const environment = await createMigrationEnvironment({
     branchMarker: TEST_PRODUCTION_BRANCH_ID,
@@ -1121,12 +1387,14 @@ test("migrations are repeatable, serialized, and grant only runtime DML", async 
     "0002_operator_availability_windows.sql",
     "0003_reservation_start_conflict_key.sql",
     "0004_stripe_checkout_session_guard.sql",
+    "0005_reservation_session_intervals.sql",
   ]);
   assert.deepEqual(results[1], [
     "0001_durable_persistence.sql",
     "0002_operator_availability_windows.sql",
     "0003_reservation_start_conflict_key.sql",
     "0004_stripe_checkout_session_guard.sql",
+    "0005_reservation_session_intervals.sql",
   ]);
   await environment.pool.query(`
     GRANT ALL PRIVILEGES
@@ -1152,7 +1420,7 @@ test("migrations are repeatable, serialized, and grant only runtime DML", async 
         "SELECT count(*)::int AS count FROM bgh_schema_migrations",
       )
     ).rows[0].count,
-    4,
+    5,
   );
   await assertEffectiveRuntimePrivileges(
     environment.pool,
@@ -1231,7 +1499,7 @@ test("changed migration checksums fail without changing applied state", async (t
         "SELECT count(*)::int AS count FROM bgh_schema_migrations",
       )
     ).rows[0].count,
-    4,
+    5,
   );
 });
 
